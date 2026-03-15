@@ -23,13 +23,13 @@ DEFAULT_PERMS=777
 INSTALL_LOCATION="/usr/local/bin/auto-nas"
 
 USAGE="Usage:
-    ./auto-nas status               (Lists mounted USB drives)
-    ./auto-nas mount <DEVICE>       (Mounts a drive to $MOUNT_PATH)
-    ./auto-nas unmount <DEVICE>     (Unmounts a drive from $MOUNT_PATH)
-    ./auto-nas logs <live|recent>   (Check auto-nas logs)
-    ./auto-nas install              (Install auto-nas)
-    ./auto-nas remove               (Remove auto-nas)
-    ./auto-nas setup                (Install dependencies)
+    auto-nas status               (Lists mounted USB drives)
+    auto-nas mount <DEVICE>       (Mounts a drive to $MOUNT_PATH)
+    auto-nas unmount <DEVICE>     (Unmounts a drive from $MOUNT_PATH)
+    auto-nas logs <live|recent>   (Check auto-nas logs)
+    auto-nas install              (Install auto-nas)
+    auto-nas remove               (Remove auto-nas)
+    auto-nas setup                (Install dependencies)
     
 Automatically mount/unmount connected USB drives and share via NFS and Samba"
 
@@ -75,24 +75,20 @@ status_usb() {
 # --- Mount USB device ---
 mount_usb() {
     DEVICE="$1"
-    [ -e "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
+     [ ! -e "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
 
-    # Wait for udev and blkid metadata
-    udevadm settle --timeout=5 || true
+    log "Wait for udev"
+    
+    udevadm settle --timeout=5
 
-    FS_LABEL=""
-    FS_TYPE=""
-    UUID=$(blkid -s UUID -o value "$DEVICE" 2>/dev/null || true)
+    log "Getting label and filesystem for $DEVICE"
+    
+    UUID=$(lsblk -no UUID "$DEVICE" | head -n1)
+    FS_LABEL=$(lsblk -no LABEL "$DEVICE" | head -n1)
+    FS_TYPE=$(lsblk -no FSTYPE "$DEVICE" | head -n1)
 
-    # Retry detection for slow USB drives
-    for i in {1..5}; do
-        FS_LABEL=$(blkid -s LABEL -o value "$DEVICE" 2>/dev/null || true)
-        FS_TYPE=$(blkid -s TYPE -o value "$DEVICE" 2>/dev/null || true)
-        [ -n "$FS_LABEL" ] && [ -n "$FS_TYPE" ] && break
-        sleep 1
-    done
+    log "Determining label for $DEVICE"
 
-    # Determine label
     if [ -n "$FS_LABEL" ]; then
         LABEL="$FS_LABEL"
     elif [ -n "$UUID" ]; then
@@ -187,7 +183,7 @@ mount_usb() {
 # --- Unmount USB device ---
 unmount_usb() {
     DEVICE="$1"
-    [ -e "$DEVICE" ] || error_exit "Usage: auto-nas unmount <DEVICE>"
+    ! [ -e "$DEVICE" ] || error_exit "Usage: auto-nas unmount <DEVICE>"
 
     # Get label from mount file
     LABEL=$(awk -v dev="$DEVICE" '$1==dev { $1=""; sub(/^ /,""); print }' "$MOUNT_FILE")
@@ -256,11 +252,12 @@ unmount_usb() {
 install_script() {
     echo "Setting up auto-nas..."
 
-    echo "Moving auto-nas to $INSTALL_LOCATION..."
-    rm -f "$INSTALL_LOCATION" || true
-    mv "$0" "$INSTALL_LOCATION"
-    chmod +x "$INSTALL_LOCATION"
-
+    if ! [ "$0" = "$INSTALL_LOCATION" ]; then
+        echo "Moving auto-nas to $INSTALL_LOCATION..."
+        rm -f "$INSTALL_LOCATION" || true
+        mv "$0" "$INSTALL_LOCATION"
+        chmod +x "$INSTALL_LOCATION"
+    fi
 
     mkdir -p "$MOUNT_PATH"
     chown "$DEFAULT_UID":"$DEFAULT_GID" "$MOUNT_PATH"
@@ -412,6 +409,7 @@ remove_script() {
     systemctl disable --now smbd 
     systemctl disable --now nfs-server
     systemctl disable --now auto-nas@*.service
+    systemctl disable --now auto-nas@.service
 
     rm -f /etc/systemd/system/auto-nas@.service
     rm -f /etc/udev/rules.d/99-auto-nas.rules
