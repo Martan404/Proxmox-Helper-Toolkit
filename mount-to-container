@@ -7,8 +7,6 @@ CTID="${1:-}"
 MOUNTPOINT="${2:-}"
 MOUNTPOINT_LOCAL="${3:-}"
 
-[[ ! -e "$MOUNTPOINT" ]] && mkdir $MOUNTPOINT
-
 # If MOUNTPOINT_LOCAL is empty, use MOUNTPOINT
 MOUNTPOINT_LOCAL="${MOUNTPOINT_LOCAL:-$MOUNTPOINT}"
 
@@ -27,8 +25,20 @@ if ! pct status "$CTID" &>/dev/null; then
     error_exit "Container $CTID does not exist."
 fi
 
-# --- action ---
+# --- create host mount path ---
+if [[ ! -e "$MOUNTPOINT" ]]; then
+    echo "Creating host mount path: $MOUNTPOINT"
+    mkdir -p "$MOUNTPOINT"
+    chown -R nobody:nogroup "$MOUNTPOINT"
+fi
+
+# --- create container mount path ---
+echo "Creating mount path inside container: $MOUNTPOINT_LOCAL"
+pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
+pct exec "$CTID" -- chown -R "$MOUNTPOINT_LOCAL" || error_exit "Failed to change owner mount path inside container."
+
+# --- add mount ---
 echo "Adding mount path to container $CTID..."
-pct set "$CTID" -mp0 "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" >/dev/null 2>&1|| error_exit "Failed to add mount. Shutdown the container if it's running or try to create the mount path."
-chown -R nobody:nogroup "$MOUNTPOINT"
+pct set "$CTID" -mp0 "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" || error_exit "Failed to add mount."
+
 echo "Mount path added successfully to container $CTID."
