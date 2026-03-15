@@ -1,6 +1,8 @@
 #!/bin/bash
 # Runs <command> on every Proxmox node in the cluster, optionally in parallel
 
+# shellcheck disable=SC2207
+
 PARALLEL=false
 
 # Parse optional flag
@@ -15,10 +17,16 @@ if [ $# -eq 0 ]; then
 fi
 
 COMMAND="$*"
-CURRENT_NODE=$(hostname)
+LOCAL_NODE=$(hostname)
 
 # Grab node names from the cluster
-NODES=$(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}')
+NODES=($(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}'))
+
+# Reorder nodes so the local node runs last
+NODES=(
+  $(printf "%s\n" "${NODES[@]}" | grep -v "^$LOCAL_NODE$")
+  "$LOCAL_NODE"
+)
 
 run_command() {
     local NODE="$1"
@@ -33,7 +41,7 @@ run_command() {
         return
     fi
 
-    if [[ "$NODE" == "$CURRENT_NODE" ]]; then
+    if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
         ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
@@ -42,10 +50,10 @@ run_command() {
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
         fi
     fi
-    echo
 }
 
-for NODE in $NODES; do
+# Run commands
+for NODE in "${NODES[@]}"; do
     if $PARALLEL; then
         run_command "$NODE" &
     else
