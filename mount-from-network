@@ -195,7 +195,7 @@ while true; do
         2) mount_nfs ;;
         3) mount_smb ;;
         4) unmount_nas ;;
-        4) setup_os ;;
+        5) setup_os ;;
         0) exit 0 ;;
         *) echo "Invalid choice."; pause ;;
     esac
