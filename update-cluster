@@ -1,0 +1,18 @@
+#!/bin/bash
+# Updates the entire Proxmox cluster
+
+# shellcheck disable=SC2016
+
+echo "Updating apps on all running containers across the cluster..."
+echo
+
+run-on-cluster 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
+echo
+
+echo "Updating system packges across the cluster..."
+echo
+
+run-on-cluster 'apt --assume-yes update && apt --assume-yes upgrade'
+echo
+
+echo "Cluster update complete."

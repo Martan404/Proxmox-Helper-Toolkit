@@ -1,0 +1,38 @@
+#!/bin/bash
+# Runs <command> on every Proxmox node in the cluster
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <command>"
+    exit 1
+fi
+
+COMMAND="$*"
+CURRENT_NODE=$(hostname)
+
+# Grab node names from the cluster
+NODES=$(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}')
+
+for NODE in $NODES; do
+    echo "[ $NODE ]"
+
+    # Get the nodes IP from vmbr0 via JSON parsing
+    NODE_IP=$(pvesh get /nodes/$NODE/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
+
+    if [[ -z "$NODE_IP" ]]; then
+        echo -e "[ WARNING ] Could not determine IP for $NODE, skipping."
+        continue
+    fi
+
+    if [[ "$NODE" == "$CURRENT_NODE" ]]; then
+        # Run command locally
+        bash -c "$COMMAND"
+    else
+        # Run command via SSH, exporting xterm for scripts
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
+        SSH_EXIT=$?
+        if [[ $SSH_EXIT -ne 0 ]]; then
+            echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
+        fi
+    fi
+    echo
+done

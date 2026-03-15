@@ -1,0 +1,202 @@
+#!/bin/bash
+# Mount/unmount network drives via NFS and Samba 
+#
+# Dependencies 
+# apt install -y nfs-common cifs-utils
+
+set -euo pipefail
+
+# --- Global constants ---
+MOUNT_PATH="/mnt/nas"
+MOUNT_FILE="$MOUNT_PATH/.network_mounts"
+
+mkdir -p "$MOUNT_PATH"
+touch "$MOUNT_FILE"
+
+# --- Helper: print error and exit ---
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- Helper: pause and wait for user input ---
+pause() { 
+    read -rp "Press Enter to continue..."
+}
+
+mount_nfs() {
+    echo -e "\n--- Mount NFS Share ---"
+    read -rp "Enter Server IP: (e.g. 192.168.1.10): " nfs_ip
+    showmount -e "$nfs_ip"
+    read -rp "Enter directory path (/mnt/usb/myDrive): " nfs_path
+    read -rp "Enter local name/label (e.g. myDrive): " local_name
+    
+    local nfs_full_path="$nfs_ip:$nfs_path"
+    local target="$MOUNT_PATH/$local_name"
+    mkdir -p "$target"
+
+    if mount -t nfs -o rw,vers=4 "$nfs_full_path" "$target"; then
+        echo "nfs $nfs_full_path $target" >> "$MOUNT_FILE"
+        
+        fstab_entry="$nfs_full_path $target nfs defaults,user,noauto,_netdev 0 0"
+        grep -Fxq "$fstab_entry" "/etc/fstab" || echo "$fstab_entry" >> "/etc/fstab"
+        mount -a -f
+        
+        echo "Mounted NFS share $nfs_full_path at $target"
+    else
+        echo "Failed to mount $nfs_full_path"
+    fi
+    pause
+}
+
+mount_smb() {
+    echo -e "\n--- Mount Samba Share ---"
+    read -rp "Enter Server IP: (e.g. 192.168.1.10): " smb_ip
+    smbclient -L "$smb_ip"
+    read -rp "Enter folder path (e.g. /myData): " smb_path
+    read -rp "Enter local name/label (e.g. myData): " local_name
+    
+    local smb_full_path="//$smb_ip$smb_path"
+    local target="$MOUNT_PATH/$local_name"
+    mkdir -p "$target"
+    
+    if mount -t cifs -o rw,vers=3.0,credentials=guest "$smb_full_path" "$target"; then
+        echo "cifs $smb_full_path $target" >> "$MOUNT_FILE"
+        
+        fstab_entry="$smb_full_path $target cifs rw,vers=3.0,guest,noauto,_netdev 0 0"
+        grep -Fxq "$fstab_entry" "/etc/fstab" || echo "$fstab_entry" >> "/etc/fstab"
+        mount -a -f
+        
+        echo "Mounted SMB share $smb_full_path at $target"
+    else
+        echo "Failed to mount $smb_full_path"
+    fi
+    pause
+}
+
+unmount_nas() {
+       # Ensure mount file exists
+    [ ! -f "$MOUNT_FILE" ] && { echo "No mounts found."; return; }
+
+    echo "Currently mounted network drives:"
+    echo "---------------------------------"
+
+    # Read all entries from the mount file
+    index=1
+    declare -A options
+
+    while read -r protocol source_path local_name; do
+        # Skip empty lines or malformed entries
+        [ -z "$protocol" ] && continue
+        
+        echo "[$index] $local_name to $source_path ($protocol)"
+        options[$index]="$protocol $source_path $local_name"
+        index=$((index + 1))
+    done < "$MOUNT_FILE"
+
+    # If nothing was listed
+    if [ ${#options[@]} -eq 0 ]; then
+        echo "No drives are currently tracked in $MOUNT_FILE."
+        return
+    fi
+
+    echo
+    read -rp "Enter the number of the drive to unmount (or press Enter to cancel): " choice
+    [ -z "$choice" ] && { echo "Cancelled."; return; }
+
+    if [[ -z "${options[$choice]}" ]]; then
+        echo "Invalid choice."
+        return
+    fi
+
+    # Parse the chosen line
+    read -r protocol source_path local_name <<<"${options[$choice]}"
+    mount_point="$MOUNT_PATH/$local_name"
+
+    echo "Unmounting $local_name ($protocol from $source_path)..."
+
+    # Perform the unmount
+    if umount "$mount_point" 2>/dev/null; then
+        echo "Unmounted $local_name ($protocol from $source_path)"
+    else
+        echo "Failed to unmount $local_name. It may not be mounted."
+    fi
+
+    # Remove entry from fstab
+    awk -v mp="$mount_point" '
+    /^[[:space:]]*#/ || NF == 0 { print; next }
+    $2 != mp { print }
+    ' /etc/fstab > /etc/fstab.tmp && mv /etc/fstab.tmp /etc/fstab
+
+    # Remove entry from mount file
+    entry="$protocol $source_path $local_name"
+    grep -Fxv "$entry" "$MOUNT_FILE" > "$MOUNT_FILE.tmp" && mv "$MOUNT_FILE.tmp" "$MOUNT_FILE"
+}
+
+status_nas() {
+    echo -e "\n=== Currently Mounted NAS Drives ===\n"
+    if awk '$2 ~ "^'"$MOUNT_PATH"'" { found=1 } END { exit !found }' /proc/mounts; then
+        awk '$2 ~ "^'"$MOUNT_PATH"'" { printf " %-35s %-30s (%s)\n", $1, $2, $3 }' /proc/mounts | awk '{printf " %-35s %-30s (%s)\n", $1, $2, $3}'
+    else
+        echo "No NAS drives currently mounted."
+    fi
+    echo
+    pause
+}
+
+setup_os() {
+    if [[ ! -r /etc/os-release ]]; then
+        error_exit "Cannot detect OS: /etc/os-release not found"
+    fi
+
+    # shellcheck disable=SC1091
+    . /etc/os-release
+
+    echo "Detected OS: $NAME"
+
+    case "$ID" in
+        debian|ubuntu)
+            apt update
+            apt install -y nfs-common cifs-utils
+            ;;
+        arch)
+            pacman -Syu --noconfirm nfs-utils cifs-utils
+            ;;
+        fedora)
+            dnf makecache
+            dnf install -y nfs-utils cifs-utils
+            ;;
+        opensuse*|sles)
+            zypper refresh
+            zypper install -y cifs-utils
+            ;;
+        *)
+            error_exit "Unsupported distribution: $NAME ($ID)"
+            ;;
+    esac
+}
+
+[ "$EUID" -ne 0 ] && error_exit "This script must be run as root."
+
+# --- Main menu ---
+while true; do
+    clear
+    echo "========== Network Mount Manager =========="
+    echo "[1] Check status"
+    echo "[2] Mount NFS drive"
+    echo "[3] Mount Samba (SMB/CIFS) drive"
+    echo "[4] Unmount a drive"
+    echo "[5] Install dependencies"
+    echo "[0] Exit"
+    echo "==========================================="
+    read -rp "Select an option: " choice
+    case "$choice" in
+        1) status_nas ;;
+        2) mount_nfs ;;
+        3) mount_smb ;;
+        4) unmount_nas ;;
+        4) setup_os ;;
+        0) exit 0 ;;
+        *) echo "Invalid choice."; pause ;;
+    esac
+done

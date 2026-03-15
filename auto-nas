@@ -1,0 +1,490 @@
+#!/bin/bash
+# Automatically mount/unmount connected USB drives and share via NFS and Samba 
+#
+# Dependencies 
+# apt install -y nfs-kernel-server exfatprogs samba ntfs-3g
+# pacman -Syu --noconfirm nfs-utils exfatprogs samba ntfs-3g
+# dnf install -y nfs-utils exfatprogs samba ntfs-3g
+# zypper install -y nfs-kernel-server exfatprogs samba ntfs-3g
+#
+# journalctl -t auto-nas        # check logs
+# journalctl -t auto-nas -f     # live logs
+
+set -euo pipefail
+
+# --- Global constants ---
+MOUNT_PATH="/mnt/usb"
+MOUNT_FILE="$MOUNT_PATH/.local_mounts"
+SMB_CONF="/etc/samba/smb.conf"
+NFS_EXPORTS="/etc/exports"
+DEFAULT_UID=65534
+DEFAULT_GID=65534
+DEFAULT_PERMS=777
+INSTALL_LOCATION="/usr/local/bin/auto-nas"
+
+USAGE="Usage:
+    ./auto-nas status               (Lists mounted USB drives)
+    ./auto-nas mount <DEVICE>       (Mounts a drive to $MOUNT_PATH)
+    ./auto-nas unmount <DEVICE>     (Unmounts a drive from $MOUNT_PATH)
+    ./auto-nas logs <live|recent>   (Check auto-nas logs)
+    ./auto-nas install              (Install auto-nas)
+    ./auto-nas remove               (Remove auto-nas)
+    ./auto-nas setup                (Install dependencies)
+    
+Automatically mount/unmount connected USB drives and share via NFS and Samba"
+
+SUBCMD="${1:-}"
+shift || true
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo "This script must be run as root." >&2
+    exit 1
+fi
+
+# --- Helper: print error and exit ---
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- Helper: log events ---
+log() {
+    local msg="$1"
+    /usr/bin/logger -t auto-nas "$msg"
+}
+
+# --- Status: List all mounted USB drives ---
+status_usb() {
+    echo "Currently mounted USB drives:"
+    echo "--------------------------------------------"
+
+    mounted=false
+    while IFS=' ' read -r dev mp fs; do
+        if [[ "$mp" == "$MOUNT_PATH"/* ]]; then
+            label="${mp#"$MOUNT_PATH"/}"
+            printf "Device: %-12s | Label: %-20s | Mount: %s | FS: %s\n" "$dev" "$label" "$mp" "$fs"
+            mounted=true
+        fi
+    done < <(findmnt -nr -o SOURCE,TARGET,FSTYPE)
+
+    if [ "$mounted" = false ]; then
+        echo "No USB drives currently mounted."
+    fi
+}
+
+# --- Mount USB device ---
+mount_usb() {
+    DEVICE="$1"
+    [ -e "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
+
+    # Wait for udev and blkid metadata
+    udevadm settle --timeout=5 || true
+
+    FS_LABEL=""
+    FS_TYPE=""
+    UUID=$(blkid -s UUID -o value "$DEVICE" 2>/dev/null || true)
+
+    # Retry detection for slow USB drives
+    for i in {1..5}; do
+        FS_LABEL=$(blkid -s LABEL -o value "$DEVICE" 2>/dev/null || true)
+        FS_TYPE=$(blkid -s TYPE -o value "$DEVICE" 2>/dev/null || true)
+        [ -n "$FS_LABEL" ] && [ -n "$FS_TYPE" ] && break
+        sleep 1
+    done
+
+    # Determine label
+    if [ -n "$FS_LABEL" ]; then
+        LABEL="$FS_LABEL"
+    elif [ -n "$UUID" ]; then
+        LABEL="usb_${UUID}"
+    else
+        LABEL="usb_${DEVICE##*/}"
+    fi
+
+    MOUNTPOINT="$MOUNT_PATH/$LABEL"
+    mkdir -p "$MOUNTPOINT"
+
+    log "Mount start for '$DEVICE' to '$MOUNTPOINT' (label='$LABEL')"
+
+    # Mount based on FS type
+    case "$FS_TYPE" in
+        exfat)
+            if ! dpkg -s exfatprogs >/dev/null 2>&1; then
+                log "exFAT support not installed (exfatprogs required)"
+                error_exit "exFAT support not installed. Please install exfatprogs."
+            fi
+            mount -t exfat -o uid="$DEFAULT_UID",gid="$DEFAULT_GID",umask=000 "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
+            ;;
+        ntfs)
+            if ! dpkg -s ntfs-3g >/dev/null 2>&1; then
+                log "NTFS support not installed (ntfs-3g required)"
+                error_exit "NTFS support not installed. Please install ntfs-3g."
+            fi
+            mount -t ntfs-3g -o uid="$DEFAULT_UID",gid="$DEFAULT_GID",umask=000 "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
+            ;;
+        ext4|xfs|btrfs)
+            mount "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
+            ;;
+        *)
+            log "Warning: Unsupported filesystem detected. Trying to mount anyway"
+            mount "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
+            ;;
+    esac
+
+    # Ensure universal access (non-root users)
+    chown -R "$DEFAULT_UID":"$DEFAULT_GID" "$MOUNTPOINT" 2>/dev/null || true
+    chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT" 2>/dev/null || true
+
+    log "Mounted '$DEVICE' at '$MOUNTPOINT' (type=$FS_TYPE)"
+    
+    # Add new entry to device mount file
+    echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
+
+   
+    case "$FS_TYPE" in
+        exfat|ntfs)
+
+            if ! dpkg -s samba >/dev/null 2>&1; then
+                log "Samba support not installed (samba required)"
+                error_exit "Samba support not installed (samba required)"
+            fi
+
+            # Sanitize blank spaces
+            EXPORT_PATH="${MOUNTPOINT// /\\040}"
+
+            # Add Samba entry
+            if ! grep -q "^\[$LABEL\]" "$SMB_CONF" 2>/dev/null; then
+                {
+                echo ""
+                echo "[$LABEL]"
+                echo "   path = \"$EXPORT_PATH\""
+                echo "   browseable = yes"
+                echo "   read only = no"
+                echo "   guest ok = yes"
+                } >> "$SMB_CONF"
+                
+                smbcontrol all reload-config || log "Failed to reload Samba config"
+                log "Added Samba share for $LABEL to $MOUNTPOINT"
+            fi
+            ;;
+
+        ext4|xfs|btrfs|*)
+            # Sanitize blank spaces
+            EXPORT_PATH="${MOUNTPOINT// /\\040}"
+
+            if ! grep -qF "$EXPORT_PATH" "$NFS_EXPORTS" 2>/dev/null; then
+
+                # Add NFS entry
+                echo "$EXPORT_PATH *(rw,sync,all_squash)" >> "$NFS_EXPORTS"
+
+                exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
+                log "Added NFS export for $LABEL to $MOUNTPOINT"
+            fi
+            ;;
+    esac
+}
+
+# --- Unmount USB device ---
+unmount_usb() {
+    DEVICE="$1"
+    [ -e "$DEVICE" ] || error_exit "Usage: auto-nas unmount <DEVICE>"
+
+    # Get label from mount file
+    LABEL=$(awk -v dev="$DEVICE" '$1==dev { $1=""; sub(/^ /,""); print }' "$MOUNT_FILE")
+
+    MOUNTPOINT="$MOUNT_PATH/$LABEL"
+
+    # Remove Samba entry
+    if [ -f "$SMB_CONF" ] && grep -q "^\[$LABEL\]" "$SMB_CONF" 2>/dev/null; then
+        
+        log "Removing Samba share for $LABEL"
+        awk -v label="$LABEL" 'BEGIN{skip=0} /^\[.*\]/{skip=($0=="["label"]")} !skip' "$SMB_CONF" > "$SMB_CONF.tmp"
+        mv "$SMB_CONF.tmp" "$SMB_CONF"
+
+        # Clean up smb.conf
+        sed -i '/^[[:space:]]*$/d' "$SMB_CONF"
+
+        smbcontrol all reload-config || log "Failed to reload Samba config"
+    fi
+
+    # Remove NFS entry
+    if [ -f "$NFS_EXPORTS" ] && grep -qF "$MOUNTPOINT" "$NFS_EXPORTS" 2>/dev/null; then
+        
+        log "Removing NFS export for $LABEL"
+        grep -Fv "$MOUNTPOINT" "$NFS_EXPORTS" > "$NFS_EXPORTS.tmp"
+        mv "$NFS_EXPORTS.tmp" "$NFS_EXPORTS" || true
+        
+        # Clean up exports
+        sed -i -e :a -e '/^\s*$/{$d;N;ba' -e '}' "$NFS_EXPORTS"
+
+        exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
+    fi
+
+    sleep 0.5
+
+    # Attempt clean unmount
+    if [ -n "$MOUNTPOINT" ] && mountpoint -q "$MOUNTPOINT"; then
+        
+        if ! umount "$MOUNTPOINT" 2>/dev/null; then
+            log "Normal umount failed for '$MOUNTPOINT', trying lazy unmount"
+            umount -l "$MOUNTPOINT" 2>/dev/null || log "Lazy umount failed"
+        else
+            log "Unmounted '$MOUNTPOINT'"
+        fi
+    else
+        log "No mountpoint found for '$DEVICE' — skipping umount"
+    fi
+
+    # Cleanup folder
+    if [ -d "$MOUNTPOINT" ]; then
+        if rmdir "$MOUNTPOINT" 2>/dev/null; then
+            log "Removed empty mountpoint $MOUNTPOINT"
+        else
+            log "Warning: Mountpoint $MOUNTPOINT not empty, not removed"
+        fi
+    fi
+
+    # Remove entry from mount file
+    if [ -f "$MOUNT_FILE" ]; then
+        grep -Fv "^$DEVICE " "$MOUNT_FILE" > "$MOUNT_FILE.tmp" || true
+        sed -i '/^\s*$/d' "$MOUNT_FILE.tmp" # Remove empty lines
+        mv "$MOUNT_FILE.tmp" "$MOUNT_FILE"
+    fi
+}
+
+# --- Install auto-nas services ---
+install_script() {
+    echo "Setting up auto-nas..."
+
+    echo "Moving auto-nas to $INSTALL_LOCATION..."
+    rm -f "$INSTALL_LOCATION" || true
+    mv "$0" "$INSTALL_LOCATION"
+    chmod +x "$INSTALL_LOCATION"
+
+
+    mkdir -p "$MOUNT_PATH"
+    chown "$DEFAULT_UID":"$DEFAULT_GID" "$MOUNT_PATH"
+    chmod "$DEFAULT_PERMS" "$MOUNT_PATH"
+
+    echo "Installing main service..."
+    cat > /etc/systemd/system/auto-nas@.service <<'EOF'
+[Unit]
+Description=auto-nas usb mounter
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/auto-nas mount /dev/%i
+ExecStop=/usr/local/bin/auto-nas unmount /dev/%i
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    echo "Creating udev rules..."
+    mkdir -p /etc/udev/rules.d
+    cat > /etc/udev/rules.d/99-auto-nas.rules <<'EOF'
+# Mount on add
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}="auto-nas@%k.service"
+
+# Unmount on remove and trigger cleanup
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", \
+    TAG+="systemd", RUN+="/bin/systemctl stop 'auto-nas@%k.service'"
+EOF
+
+
+    echo "Writing $NFS_EXPORTS..."
+
+    cat >"$NFS_EXPORTS" <<EOF
+# /etc/exports: the access control list for filesystems which may be exported
+#               to NFS clients.  See exports(5).
+#
+# Example for NFSv2 and NFSv3:
+# /srv/homes       hostname1(rw,sync,no_subtree_check) hostname2(ro,sync,no_subtree_check)
+#
+# Example for NFSv4:
+# /srv/nfs4        gss/krb5i(rw,sync,fsid=0,crossmnt,no_subtree_check)
+# /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
+#
+
+EOF
+
+
+
+    echo "Writing $SMB_CONF..."
+    cat >"$SMB_CONF" <<EOF
+#
+# Configuration file for the Samba suite for Debian GNU/Linux.
+#
+
+#======================= Global Settings =======================
+
+[global]
+
+## Browsing/Identification ###
+
+# Change this to the workgroup/NT-domain name your Samba server will part of
+   #workgroup = WORKGROUP
+   #server string = Proxmox NAS
+
+#### Networking ####
+
+# The specific set of interfaces / networks to bind to
+# This can be either the interface name or an IP address/netmask;
+# interface names are normally preferred
+   interfaces = vmbr0 lo
+
+# Only bind to the named interfaces and/or networks; you must use the
+# 'interfaces' option above to use this.
+# It is recommended that you enable this feature if your Samba machine is
+# not protected by a firewall or is a firewall itself.  However, this
+# option cannot handle dynamic or non-broadcast interfaces correctly.
+   bind interfaces only = yes
+
+   security = user
+   client min protocol = SMB2
+   client max protocol = SMB3
+   hosts allow = 192.168.1.0/24 127.0.0.1 10.6.0.0/24
+   hosts deny = 0.0.0.0/0
+   smb encrypt = enabled
+   name resolve order = lmhosts host wins bcast
+
+####### Authentication #######
+
+# Server role. Defines in which mode Samba will operate. Possible
+# values are "standalone server", "member server", "classic primary
+# domain controller", "classic backup domain controller", "active
+# directory domain controller". 
+#
+# Most people will want "standalone server" or "member server".
+# Running as "active directory domain controller" will require first
+# running "samba-tool domain provision" to wipe databases and create a
+# new domain.
+   server role = standalone server
+
+   obey pam restrictions = yes
+
+# This boolean parameter controls whether Samba attempts to sync the Unix
+# password with the SMB password when the encrypted SMB password in the
+# passdb is changed.
+   unix password sync = yes
+
+# For Unix password sync to work on a Debian GNU/Linux system, the following
+# parameters must be set (thanks to Ian Kahan <<kahan@informatik.tu-muenchen.de> for
+# sending the correct chat script for the passwd program in Debian Sarge).
+   passwd program = /usr/bin/passwd %u
+   passwd chat = *Enter\snew\s*\spassword:* %n\n *Retype\snew\s*\spassword:* %n\n *password\supdated\ssuccessfully* .
+
+# This boolean controls whether PAM will be used for password changes
+# when requested by an SMB client instead of the program listed in
+# 'passwd program'. The default is 'no'.
+   pam password change = yes
+
+# This option controls how unsuccessful authentication attempts are mapped
+# to anonymous connections
+   map to guest = Bad User
+   guest account = nobody
+
+#======================= Share Definitions =======================
+
+EOF
+
+    echo "Enabling and starting services..."
+
+    systemctl daemon-reload
+    systemctl enable --now smbd 
+    systemctl enable --now nfs-server
+
+    {
+    exportfs -ra
+    udevadm control --reload-rules
+    udevadm trigger
+    } >/dev/null 2>&1
+
+    echo "auto-nas installed"
+}
+
+# --- Remove auto-nas services and rules ---
+remove_script() {
+    echo "Removing auto-nas services..."
+    systemctl disable --now smbd 
+    systemctl disable --now nfs-server
+    systemctl disable --now auto-nas@*.service
+
+    rm -f /etc/systemd/system/auto-nas@.service
+    rm -f /etc/udev/rules.d/99-auto-nas.rules
+    rm -f "$SMB_CONF"
+    rm -f "$NFS_EXPORTS"
+
+    {
+    systemctl daemon-reload
+    udevadm control --reload-rules
+    } >/dev/null 2>&1
+
+    echo "auto-nas removed"
+    rm -f /usr/local/bin/auto-nas
+    exit 0
+}
+
+setup_os() {
+
+    if [[ ! -r /etc/os-release ]]; then
+        error_exit "Cannot detect OS: /etc/os-release not found"
+    fi
+
+    # shellcheck disable=SC1091
+    . /etc/os-release
+
+    echo "Detected OS: $NAME"
+
+    case "$ID" in
+        debian|ubuntu)
+            apt update
+            apt install -y nfs-kernel-server exfatprogs samba ntfs-3g
+            ;;
+        arch)
+            pacman -Syu --noconfirm nfs-utils exfatprogs samba ntfs-3g
+            ;;
+        fedora)
+            dnf makecache
+            dnf install -y nfs-utils exfatprogs samba ntfs-3g
+            ;;
+        opensuse*|sles)
+            zypper refresh
+            zypper install -y nfs-kernel-server exfatprogs samba ntfs-3g
+            ;;
+        *)
+            error_exit "Unsupported distribution: $NAME ($ID)"
+            ;;
+    esac
+}
+
+logs() {
+local mode="${1:-}"
+
+    case "$mode" in
+        live)
+            journalctl -t auto-nas -f
+            ;;
+        recent)
+            journalctl -t auto-nas -n 10 --no-pager
+            ;;
+        *)
+            journalctl -t auto-nas
+            ;;
+    esac
+}
+
+# --- Main dispatcher ---
+case "$SUBCMD" in
+    mount) mount_usb "$@" ;;
+    unmount) unmount_usb "$@" ;;
+    status) status_usb ;;
+    install) install_script ;;
+    remove) remove_script ;;
+    setup) setup_os ;;
+    logs) logs "$@" ;;
+    *) error_exit "$USAGE" ;;
+esac

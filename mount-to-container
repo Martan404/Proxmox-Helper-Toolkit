@@ -1,0 +1,34 @@
+#!/bin/bash
+# Adds <Mount Point> to a specified LXC container
+
+set -euo pipefail
+
+CTID="${1:-}"
+MOUNTPOINT="${2:-}"
+MOUNTPOINT_LOCAL="${3:-}"
+
+[[ ! -e "$MOUNTPOINT" ]] && mkdir $MOUNTPOINT
+
+# If MOUNTPOINT_LOCAL is empty, use MOUNTPOINT
+MOUNTPOINT_LOCAL="${MOUNTPOINT_LOCAL:-$MOUNTPOINT}"
+
+# --- functions ---
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- checks ---
+if [[ -z "$CTID" ]]; then
+    error_exit "Usage: $0 <Container ID> <Mount Point> <Local Mount Point>"
+fi
+
+if ! pct status "$CTID" &>/dev/null; then
+    error_exit "Container $CTID does not exist."
+fi
+
+# --- action ---
+echo "Adding mount path to container $CTID..."
+pct set "$CTID" -mp0 "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" >/dev/null 2>&1|| error_exit "Failed to add mount. Shutdown the container if it's running or try to create the mount path."
+chown -R nobody:nogroup "$MOUNTPOINT"
+echo "Mount path added successfully to container $CTID."
