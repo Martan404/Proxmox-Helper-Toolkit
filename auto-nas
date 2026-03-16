@@ -85,7 +85,7 @@ mount_usb() {
     LABEL=""
     FSTYPE=""
 
-    for i in {1..5}; do
+    for _ in {1..5}; do
         eval "$(lsblk -P -o UUID,LABEL,FSTYPE "$DEVICE")"
         [ -n "$LABEL" ] && break
         sleep 1
