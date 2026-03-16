@@ -10,7 +10,7 @@
 # journalctl -t auto-nas        # check logs
 # journalctl -t auto-nas -f     # live logs
 
-set -euo pipefail
+set -o pipefail
 
 # --- Global constants ---
 MOUNT_PATH="/mnt/usb"
@@ -59,13 +59,13 @@ status_usb() {
     echo "--------------------------------------------"
 
     mounted=false
-    while IFS=' ' read -r dev mp fs; do
+    while read -r dev mp fs; do
         if [[ "$mp" == "$MOUNT_PATH"/* ]]; then
             label="${mp#"$MOUNT_PATH"/}"
             printf "Device: %-12s | Label: %-20s | Mount: %s | FS: %s\n" "$dev" "$label" "$mp" "$fs"
             mounted=true
         fi
-    done < <(findmnt -nr -o SOURCE,TARGET,FSTYPE)
+    done < <(findmnt -nr -o SOURCE,TARGET,FSTYPE --raw)
 
     if [ "$mounted" = false ]; then
         echo "No USB drives currently mounted."
@@ -74,48 +74,55 @@ status_usb() {
 
 # --- Mount USB device ---
 mount_usb() {
-    DEVICE="$1"
-     [ ! -e "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
+    DEVICE="${1:-}"
+    [ -b "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
 
-    log "Wait for udev"
-    
     udevadm settle --timeout=5
 
     log "Getting label and filesystem for $DEVICE"
-    
-    UUID=$(lsblk -no UUID "$DEVICE" | head -n1)
-    FS_LABEL=$(lsblk -no LABEL "$DEVICE" | head -n1)
-    FS_TYPE=$(lsblk -no FSTYPE "$DEVICE" | head -n1)
+
+    UUID=""
+    LABEL=""
+    FSTYPE=""
+
+    for i in {1..5}; do
+        eval "$(lsblk -P -o UUID,LABEL,FSTYPE "$DEVICE")"
+        [ -n "$LABEL" ] && break
+        sleep 1
+    done
 
     log "Determining label for $DEVICE"
 
-    if [ -n "$FS_LABEL" ]; then
-        LABEL="$FS_LABEL"
+    if [ -n "$LABEL" ]; then
+        :
     elif [ -n "$UUID" ]; then
-        LABEL="usb_${UUID}"
+        LABEL="usb_$UUID"
     else
         LABEL="usb_${DEVICE##*/}"
     fi
 
+    # Sanitize blank spaces
+    LABEL="${LABEL// /_}"
+
     MOUNTPOINT="$MOUNT_PATH/$LABEL"
     mkdir -p "$MOUNTPOINT"
 
-    log "Mount start for '$DEVICE' to '$MOUNTPOINT' (label='$LABEL')"
+    if mountpoint -q "$MOUNTPOINT"; then
+        log "$DEVICE already mounted at $MOUNTPOINT"
+        return
+    fi
+
+    log "Mount start for '$DEVICE' to '$MOUNTPOINT' ($LABEL, $FSTYPE)"
 
     # Mount based on FS type
-    case "$FS_TYPE" in
+    case "$FSTYPE" in
         exfat)
-            if ! dpkg -s exfatprogs >/dev/null 2>&1; then
-                log "exFAT support not installed (exfatprogs required)"
-                error_exit "exFAT support not installed. Please install exfatprogs."
-            fi
             mount -t exfat -o uid="$DEFAULT_UID",gid="$DEFAULT_GID",umask=000 "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
             ;;
+        vfat)
+            mount -t vfat -o uid="$DEFAULT_UID",gid="$DEFAULT_GID",umask=000 "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
+            ;;
         ntfs)
-            if ! dpkg -s ntfs-3g >/dev/null 2>&1; then
-                log "NTFS support not installed (ntfs-3g required)"
-                error_exit "NTFS support not installed. Please install ntfs-3g."
-            fi
             mount -t ntfs-3g -o uid="$DEFAULT_UID",gid="$DEFAULT_GID",umask=000 "$DEVICE" "$MOUNTPOINT" || error_exit "Failed to mount '$DEVICE' to '$MOUNTPOINT'"
             ;;
         ext4|xfs|btrfs)
@@ -131,20 +138,14 @@ mount_usb() {
     chown -R "$DEFAULT_UID":"$DEFAULT_GID" "$MOUNTPOINT" 2>/dev/null || true
     chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT" 2>/dev/null || true
 
-    log "Mounted '$DEVICE' at '$MOUNTPOINT' (type=$FS_TYPE)"
+    log "Mounted '$DEVICE' at '$MOUNTPOINT'"
     
     # Add new entry to device mount file
     echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
 
    
-    case "$FS_TYPE" in
-        exfat|ntfs)
-
-            if ! dpkg -s samba >/dev/null 2>&1; then
-                log "Samba support not installed (samba required)"
-                error_exit "Samba support not installed (samba required)"
-            fi
-
+    case "$FSTYPE" in
+        exfat|vfat|ntfs)
             # Sanitize blank spaces
             EXPORT_PATH="${MOUNTPOINT// /\\040}"
 
@@ -153,7 +154,7 @@ mount_usb() {
                 {
                 echo ""
                 echo "[$LABEL]"
-                echo "   path = \"$EXPORT_PATH\""
+                echo "   path = $EXPORT_PATH"
                 echo "   browseable = yes"
                 echo "   read only = no"
                 echo "   guest ok = yes"
@@ -182,70 +183,72 @@ mount_usb() {
 
 # --- Unmount USB device ---
 unmount_usb() {
-    DEVICE="$1"
-    ! [ -e "$DEVICE" ] || error_exit "Usage: auto-nas unmount <DEVICE>"
+    DEVICE="${1:-}"
 
-    # Get label from mount file
-    LABEL=$(awk -v dev="$DEVICE" '$1==dev { $1=""; sub(/^ /,""); print }' "$MOUNT_FILE")
+    # Only allow one unmount at a time
+    LOCKFILE="/var/lock/auto-nas-unmount.lock"
+    exec 200>"$LOCKFILE"
+    log "Waiting for other unmounts to finish if necessary..."
+    flock 200
 
-    MOUNTPOINT="$MOUNT_PATH/$LABEL"
+    # Ensure the mount file exists
+    [ -f "$MOUNT_FILE" ] || return
 
-    # Remove Samba entry
-    if [ -f "$SMB_CONF" ] && grep -q "^\[$LABEL\]" "$SMB_CONF" 2>/dev/null; then
-        
-        log "Removing Samba share for $LABEL"
-        awk -v label="$LABEL" 'BEGIN{skip=0} /^\[.*\]/{skip=($0=="["label"]")} !skip' "$SMB_CONF" > "$SMB_CONF.tmp"
-        mv "$SMB_CONF.tmp" "$SMB_CONF"
-
-        # Clean up smb.conf
-        sed -i '/^[[:space:]]*$/d' "$SMB_CONF"
-
-        smbcontrol all reload-config || log "Failed to reload Samba config"
-    fi
-
-    # Remove NFS entry
-    if [ -f "$NFS_EXPORTS" ] && grep -qF "$MOUNTPOINT" "$NFS_EXPORTS" 2>/dev/null; then
-        
-        log "Removing NFS export for $LABEL"
-        grep -Fv "$MOUNTPOINT" "$NFS_EXPORTS" > "$NFS_EXPORTS.tmp"
-        mv "$NFS_EXPORTS.tmp" "$NFS_EXPORTS" || true
-        
-        # Clean up exports
-        sed -i -e :a -e '/^\s*$/{$d;N;ba' -e '}' "$NFS_EXPORTS"
-
-        exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
-    fi
-
-    sleep 0.5
-
-    # Attempt clean unmount
-    if [ -n "$MOUNTPOINT" ] && mountpoint -q "$MOUNTPOINT"; then
-        
-        if ! umount "$MOUNTPOINT" 2>/dev/null; then
-            log "Normal umount failed for '$MOUNTPOINT', trying lazy unmount"
-            umount -l "$MOUNTPOINT" 2>/dev/null || log "Lazy umount failed"
-        else
-            log "Unmounted '$MOUNTPOINT'"
-        fi
+    # Build a list of devices to process
+    if [ -n "$DEVICE" ] && [ -e "$DEVICE" ]; then
+        TO_PROCESS=("$DEVICE")
     else
-        log "No mountpoint found for '$DEVICE' — skipping umount"
+        # Collect devices whose mountpoint is gone
+        TO_PROCESS=()
+        while read -r loop_device loop_label; do
+            MOUNTPOINT="$MOUNT_PATH/$loop_label"
+            if [ ! -b "$loop_device" ] || ! mountpoint -q "$MOUNTPOINT"; then
+                TO_PROCESS+=("$loop_device")
+            fi
+        done < "$MOUNT_FILE"
     fi
 
-    # Cleanup folder
-    if [ -d "$MOUNTPOINT" ]; then
-        if rmdir "$MOUNTPOINT" 2>/dev/null; then
-            log "Removed empty mountpoint $MOUNTPOINT"
-        else
-            log "Warning: Mountpoint $MOUNTPOINT not empty, not removed"
+    # Exit if nothing to do
+    [ "${#TO_PROCESS[@]}" -eq 0 ] && return
+
+    # Loop through each device
+    for DEVICE in "${TO_PROCESS[@]}"; do
+        # Get label from mount file
+        LABEL=$(awk -v dev="$DEVICE" '$1==dev { $1=""; sub(/^ /,""); print }' "$MOUNT_FILE")
+        MOUNTPOINT="$MOUNT_PATH/$LABEL"
+
+        log "Processing removal: $DEVICE ($LABEL)"
+
+        # Remove Samba entry
+        if [ -f "$SMB_CONF" ] && grep -q "^\[$LABEL\]" "$SMB_CONF" 2>/dev/null; then
+            log "Removing Samba share for $LABEL"
+            sed -i "/^\[$LABEL\]/,/^\[/d" "$SMB_CONF"
+            sed -i '/^[[:space:]]*$/d' "$SMB_CONF"
+            smbcontrol all reload-config || log "Failed to reload Samba config"
         fi
-    fi
 
-    # Remove entry from mount file
-    if [ -f "$MOUNT_FILE" ]; then
-        grep -Fv "^$DEVICE " "$MOUNT_FILE" > "$MOUNT_FILE.tmp" || true
-        sed -i '/^\s*$/d' "$MOUNT_FILE.tmp" # Remove empty lines
-        mv "$MOUNT_FILE.tmp" "$MOUNT_FILE"
-    fi
+        # Remove NFS entry
+        if [ -f "$NFS_EXPORTS" ] && grep -qF "$MOUNTPOINT" "$NFS_EXPORTS" 2>/dev/null; then
+            log "Removing NFS export for $LABEL"
+            sed -i "\|$MOUNTPOINT|d" "$NFS_EXPORTS"
+            sed -i '/^[[:space:]]*$/d' "$NFS_EXPORTS"
+            exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
+        fi
+
+        # Attempt unmount and cleanup folder
+        if [ -d "$MOUNTPOINT" ]; then
+            log "Attempting unmount and cleanup folder"
+            if mountpoint -q "$MOUNTPOINT"; then
+                umount "$MOUNTPOINT" 2>/dev/null || umount -l "$MOUNTPOINT" 2>/dev/null || log "Failed to unmount $MOUNTPOINT"
+            fi
+            rmdir "$MOUNTPOINT" 2>/dev/null || log "Warning: Mountpoint $MOUNTPOINT not empty, not removed"
+        fi
+
+        # Remove entry from mount file
+        sed -i "\|$DEVICE|d" "$MOUNT_FILE"
+
+        log "Removed: $DEVICE ($LABEL)"
+    done
 }
 
 # --- Install auto-nas services ---
@@ -260,6 +263,7 @@ install_script() {
     fi
 
     mkdir -p "$MOUNT_PATH"
+    touch "$MOUNT_FILE"
     chown "$DEFAULT_UID":"$DEFAULT_GID" "$MOUNT_PATH"
     chmod "$DEFAULT_PERMS" "$MOUNT_PATH"
 
@@ -283,14 +287,13 @@ EOF
     mkdir -p /etc/udev/rules.d
     cat > /etc/udev/rules.d/99-auto-nas.rules <<'EOF'
 # Mount on add
-ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", \
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_USB_TYPE}!="", ENV{ID_FS_USAGE}=="filesystem", \
     TAG+="systemd", ENV{SYSTEMD_WANTS}="auto-nas@%k.service"
 
 # Unmount on remove and trigger cleanup
-ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", \
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_USB_TYPE}!="", ENV{ID_FS_USAGE}=="filesystem", \
     TAG+="systemd", RUN+="/bin/systemctl stop 'auto-nas@%k.service'"
 EOF
-
 
     echo "Writing $NFS_EXPORTS..."
 
