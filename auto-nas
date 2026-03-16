@@ -91,8 +91,6 @@ mount_usb() {
         sleep 1
     done
 
-    log "Determining label for $DEVICE"
-
     if [ -n "$LABEL" ]; then
         :
     elif [ -n "$UUID" ]; then
@@ -146,9 +144,6 @@ mount_usb() {
    
     case "$FSTYPE" in
         exfat|vfat|ntfs)
-            # Sanitize blank spaces
-            EXPORT_PATH="${MOUNTPOINT// /\\040}"
-
             # Add Samba entry
             if ! grep -q "^\[$LABEL\]" "$SMB_CONF" 2>/dev/null; then
                 {
@@ -166,12 +161,8 @@ mount_usb() {
             ;;
 
         ext4|xfs|btrfs|*)
-            # Sanitize blank spaces
-            EXPORT_PATH="${MOUNTPOINT// /\\040}"
-
+            # Add NFS entry
             if ! grep -qF "$EXPORT_PATH" "$NFS_EXPORTS" 2>/dev/null; then
-
-                # Add NFS entry
                 echo "$EXPORT_PATH *(rw,sync,all_squash)" >> "$NFS_EXPORTS"
 
                 exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
