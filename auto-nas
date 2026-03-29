@@ -139,7 +139,7 @@ mount_usb() {
     log "Mounted '$DEVICE' at '$MOUNTPOINT'"
     
     # Add new entry to device mount file
-    echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
+    grep -q "^$DEVICE " "$MOUNT_FILE" 2>/dev/null || echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
 
    
     case "$FSTYPE" in
