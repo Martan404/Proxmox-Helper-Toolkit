@@ -25,17 +25,13 @@ if ! pct status "$CTID" &>/dev/null; then
     error_exit "Container $CTID does not exist."
 fi
 
-# --- create host mount path ---
-if [[ ! -e "$MOUNTPOINT" ]]; then
-    echo "Creating host mount path: $MOUNTPOINT"
-    mkdir -p "$MOUNTPOINT"
-    chown -R nobody:nogroup "$MOUNTPOINT"
+# --- create container mount path ---
+if [[ ! -e "$MOUNTPOINT_LOCAL" ]]; then
+    pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
 fi
 
-# --- create container mount path ---
-echo "Creating mount path inside container: $MOUNTPOINT_LOCAL"
-pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
-pct exec "$CTID" -- chown -R "$MOUNTPOINT_LOCAL" || error_exit "Failed to change owner mount path inside container."
+# --- setting permissions ---
+pct exec "$CTID" -- chown -R nobody:nogroup "$MOUNTPOINT_LOCAL"
 
 # --- add mount ---
 echo "Adding mount path to container $CTID..."
