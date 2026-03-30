@@ -1,7 +1,7 @@
 #!/bin/bash
-# Automatically mount/unmount connected USB drives and share via NFS and Samba 
+# Automatically mount/unmount connected USB drives and share via NFS and Samba
 #
-# Dependencies 
+# Dependencies
 # apt install -y nfs-kernel-server exfatprogs samba ntfs-3g
 # pacman -Syu --noconfirm nfs-utils exfatprogs samba ntfs-3g
 # dnf install -y nfs-utils exfatprogs samba ntfs-3g
@@ -30,7 +30,7 @@ USAGE="Usage:
     auto-nas install              (Install auto-nas)
     auto-nas remove               (Remove auto-nas)
     auto-nas setup                (Install dependencies)
-    
+
 Automatically mount/unmount connected USB drives and share via NFS and Samba"
 
 SUBCMD="${1:-}"
@@ -137,11 +137,10 @@ mount_usb() {
     chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT" 2>/dev/null || true
 
     log "Mounted '$DEVICE' at '$MOUNTPOINT'"
-    
+
     # Add new entry to device mount file
     grep -q "^$DEVICE " "$MOUNT_FILE" 2>/dev/null || echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
 
-   
     case "$FSTYPE" in
         exfat|vfat|ntfs)
             # Add Samba entry
@@ -154,7 +153,7 @@ mount_usb() {
                 echo "   read only = no"
                 echo "   guest ok = yes"
                 } >> "$SMB_CONF"
-                
+
                 smbcontrol all reload-config || log "Failed to reload Samba config"
                 log "Added Samba share for $LABEL to $MOUNTPOINT"
             fi
@@ -385,7 +384,7 @@ EOF
     echo "Enabling and starting services..."
 
     systemctl daemon-reload
-    systemctl enable --now smbd 
+    systemctl enable --now smbd
     systemctl enable --now nfs-server
 
     {
