@@ -31,10 +31,20 @@ if [[ ! -e "$MOUNTPOINT_LOCAL" ]]; then
 fi
 
 # --- setting permissions ---
+chown -R nobody:nogroup "$MOUNTPOINT_LOCAL"
 pct exec "$CTID" -- chown -R nobody:nogroup "$MOUNTPOINT_LOCAL"
 
+# --- find next free mp index ---
+NEXT_MP=$(pct config "$CTID" | grep -oP '^mp\d+' | sed 's/mp//' | sort -n | tail -1)
+
+if [[ -z "$NEXT_MP" ]]; then
+    NEXT_MP=0
+else
+    NEXT_MP=$((NEXT_MP + 1))
+fi
+
 # --- add mount ---
-echo "Adding mount path to container $CTID..."
-pct set "$CTID" -mp0 "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" || error_exit "Failed to add mount."
+echo "Adding mount as mp${NEXT_MP} to container $CTID..."
+pct set "$CTID" -mp${NEXT_MP} "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" || error_exit "Failed to add mount."
 
 echo "Mount path added successfully to container $CTID."
