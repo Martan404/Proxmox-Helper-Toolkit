@@ -1,0 +1,40 @@
+#!/bin/bash
+# GET THE CLOUDFLARE TOKEN FROM HERE! 
+# https://dash.cloudflare.com/profile/api-tokens
+# It needs DNS Edit access for your domain/zone
+
+apt update && apt upgrade -y
+apt install -y ddclient
+
+touch /etc/ddclient.conf
+
+# Ask user for input
+read -p "Enter your domain (e.g. example.com): " DOMAIN
+read -s -p "Enter your Cloudflare API token: " TOKEN
+echo
+
+# Write ddclient config
+cat <<EOF > /etc/ddclient.conf
+protocol=cloudflare
+ssl=yes
+use=web
+
+zone=$DOMAIN
+ttl=1
+
+login=token
+password='$TOKEN'
+
+$DOMAIN
+game.$DOMAIN
+play.$DOMAIN
+*.$DOMAIN
+EOF
+
+echo "/etc/ddclient.conf written for $DOMAIN"
+chmod 600 /etc/ddclient.conf
+
+systemctl enable --now ddclient
+
+echo "Testing setup..."
+ddclient -daemon=0 -verbose -noquiet 2>&1 | grep -E "SUCCESS|NOCHANGE|FAILED"
