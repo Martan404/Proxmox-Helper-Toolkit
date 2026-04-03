@@ -24,7 +24,7 @@ for file in $files; do
     esac
 
     echo "Downloading $file..."
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file" -o "$TEMP_DIR/$file"
+    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?cb=$(date +%s)" -o "$TEMP_DIR/$file"
     chmod +x "$TEMP_DIR/$file"
 done
 
