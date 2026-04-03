@@ -12,10 +12,12 @@ echo "Updating Proxmox Helper Toolkit scripts..."
 files=$(curl -fsSL -H "Cache-Control: no-cache" "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
 for file in $files; do
-    # Skip LICENSE
-    if [ "$file" = "LICENSE" ]; then
+    # Skip non-script files
+    case "$file" in
+    LICENSE|.gitignore)
         continue
-    fi
+        ;;
+    esac
 
     echo "Installing $file..."
     curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
