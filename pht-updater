@@ -8,20 +8,31 @@ BRANCH="main"
 
 echo "Updating Proxmox Helper Toolkit scripts..."
 
+# Create a temporary directory
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
 # Get list of files in the repo root
 files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip non-script files
     case "$file" in
-    LICENSE|.gitignore|README.md)
-        continue
-        ;;
+        LICENSE|.gitignore|README.md)
+            echo "Skipping $file"
+            continue
+            ;;
     esac
 
-    echo "Installing $file..."
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file" -o "$TARGET_DIR/$file"
-    chmod +x "$TARGET_DIR/$file"
+    echo "Downloading $file..."
+    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file" -o "$TEMP_DIR/$file"
+    chmod +x "$TEMP_DIR/$file"
+done
+
+# Move files from temp directory to target
+echo "Installing downloaded scripts..."
+for file in "$TEMP_DIR"/*; do
+    mv -f "$file" "$TARGET_DIR/"
 done
 
 echo "Done! All scripts are updated"
