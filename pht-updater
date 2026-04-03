@@ -9,7 +9,7 @@ BRANCH="main"
 echo "Updating Proxmox Helper Toolkit scripts..."
 
 # Get list of files in the repo root
-files=$(curl -fsSL "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
+files=$(curl -fsSL -H "Cache-Control: no-cache" "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip LICENSE
@@ -18,7 +18,7 @@ for file in $files; do
     fi
 
     echo "Installing $file..."
-    curl -fsSL "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
+    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
     chmod +x "$TARGET_DIR/$file"
 done
 
