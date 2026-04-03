@@ -19,7 +19,6 @@ for file in $files; do
     # Skip non-script files
     case "$file" in
         LICENSE|.gitignore|README.md)
-            echo "Skipping $file"
             continue
             ;;
     esac
