@@ -2,40 +2,24 @@
 
 set -euo pipefail
 
-REPO_URL="https://github.com/Martan404/Proxmox-Helper-Toolkit/archive/refs/heads/main.zip"
-WORK_DIR="$(mktemp -d)"
 TARGET_DIR="/usr/local/bin"
+REPO_API="https://api.github.com/repos/Martan404/Proxmox-Helper-Toolkit/contents"
+BRANCH="main"
 
-cleanup() {
-    rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
+echo "Installing/updating Proxmox Helper Toolkit scripts..."
 
-echo "Proxmox Helper Toolkit Updater"
-echo "Downloading..."
+# Get list of files in the repo root
+files=$(curl -fsSL "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
-curl -fsSL "$REPO_URL" -o "$WORK_DIR/main.zip"
+for file in $files; do
+    # Skip LICENSE
+    if [ "$file" = "LICENSE" ]; then
+        continue
+    fi
 
-echo "Extracting..."
-unzip -q "$WORK_DIR/main.zip" -d "$WORK_DIR"
-
-# Get extracted directory (first directory inside WORK_DIR)
-EXTRACTED_DIR="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-
-echo "Installing scripts to $TARGET_DIR..."
-
-find "$EXTRACTED_DIR" -type f -print0 | while IFS= read -r -d '' file; do
-    name="$(basename "$file")"
-
-    # Skip non-script files
-    case "$name" in
-        LICENSE|README*|*.md|*.txt|*.json|*.yml|*.yaml)
-            continue
-            ;;
-    esac
-
-    install -m 0755 "$file" "$TARGET_DIR/$name"
-    echo "Installed $name"
+    echo "  -> Installing $file..."
+    curl -fsSL "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
+    chmod +x "$TARGET_DIR/$file"
 done
 
-echo "Done!"
+echo "Done! All scripts are installed/updated in $TARGET_DIR"
