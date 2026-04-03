@@ -16,3 +16,17 @@ run-on-cluster 'apt --assume-yes update && apt --assume-yes upgrade'
 echo
 
 echo "Cluster update complete."
+echo
+
+# Ask for reboot
+read -rp "Do you want to reboot all servers in the cluster? (y/N): " answer
+
+case "$answer" in
+    [yY]|[yY][eE][sS])
+        echo "Rebooting all servers..."
+        run-on-cluster 'reboot'
+        ;;
+    *)
+        echo "Skipping reboot."
+        ;;
+esac
