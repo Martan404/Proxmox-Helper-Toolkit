@@ -6,7 +6,7 @@ TARGET_DIR="/usr/local/bin"
 REPO_API="https://api.github.com/repos/Martan404/Proxmox-Helper-Toolkit/contents"
 BRANCH="main"
 
-echo "Installing/updating Proxmox Helper Toolkit scripts..."
+echo "Updating Proxmox Helper Toolkit scripts..."
 
 # Get list of files in the repo root
 files=$(curl -fsSL "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
@@ -17,9 +17,9 @@ for file in $files; do
         continue
     fi
 
-    echo "  -> Installing $file..."
+    echo "Installing $file..."
     curl -fsSL "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
     chmod +x "$TARGET_DIR/$file"
 done
 
-echo "Done! All scripts are installed/updated in $TARGET_DIR"
+echo "Done! All scripts are updated"
