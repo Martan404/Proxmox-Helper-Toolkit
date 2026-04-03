@@ -3,13 +3,13 @@
 set -euo pipefail
 
 TARGET_DIR="/usr/local/bin"
-REPO_API="https://api.github.com/repos/Martan404/Proxmox-Helper-Toolkit/contents"
+REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
 
 echo "Updating Proxmox Helper Toolkit scripts..."
 
 # Get list of files in the repo root
-files=$(curl -fsSL -H "Cache-Control: no-cache" "$REPO_API?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
+files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip non-script files
@@ -20,7 +20,7 @@ for file in $files; do
     esac
 
     echo "Installing $file..."
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/Martan404/Proxmox-Helper-Toolkit/$BRANCH/$file" -o "$TARGET_DIR/$file"
+    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file" -o "$TARGET_DIR/$file"
     chmod +x "$TARGET_DIR/$file"
 done
 
