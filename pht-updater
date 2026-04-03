@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_URL="https://github.com/Martan404/Proxmox-Helper-Toolkit/archive/refs/heads/main.zip"
+WORK_DIR="$(mktemp -d)"
+TARGET_DIR="/usr/local/bin"
+
+cleanup() {
+    rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
+
+echo "Proxmox Helper Toolkit Updater"
+echo "Downloading..."
+
+curl -fsSL "$REPO_URL" -o "$WORK_DIR/main.zip"
+
+echo "Extracting..."
+unzip -q "$WORK_DIR/main.zip" -d "$WORK_DIR"
+
+# Get extracted directory (first directory inside WORK_DIR)
+EXTRACTED_DIR="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+
+echo "Installing scripts to $TARGET_DIR..."
+
+find "$EXTRACTED_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+    name="$(basename "$file")"
+
+    # Skip non-script files
+    case "$name" in
+        LICENSE|README*|*.md|*.txt|*.json|*.yml|*.yaml)
+            continue
+            ;;
+    esac
+
+    install -m 0755 "$file" "$TARGET_DIR/$name"
+    echo "Installed $name"
+done
+
+echo "Done!"
