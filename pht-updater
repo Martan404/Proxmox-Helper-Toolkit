@@ -14,7 +14,7 @@ files=$(curl -fsSL -H "Cache-Control: no-cache" "$REPO_API?ref=$BRANCH" | grep -
 for file in $files; do
     # Skip non-script files
     case "$file" in
-    LICENSE|.gitignore)
+    LICENSE|.gitignore|README.md)
         continue
         ;;
     esac
