@@ -1,19 +1,19 @@
 #!/bin/bash
-# GET THE CLOUDFLARE TOKEN FROM HERE! 
+# GET THE CLOUDFLARE TOKEN FROM HERE!
 # https://dash.cloudflare.com/profile/api-tokens
 # It needs DNS Edit access for your domain/zone
 
 apt update && apt upgrade -y
 apt install -y ddclient
 
-touch /etc/ddclient.conf
-
 # Ask user for input
 read -p "Enter your domain (e.g. example.com): " DOMAIN
 read -s -p "Enter your Cloudflare API token: " TOKEN
 echo
+read -p "Add wildcard (*.$DOMAIN)? (y/n): " WILDCARD
+read -p "Enter subdomains (comma-separated, e.g. game,play): " SUBDOMAINS
 
-# Write ddclient config
+# Write ddclient config file
 cat <<EOF > /etc/ddclient.conf
 protocol=cloudflare
 ssl=yes
@@ -26,12 +26,27 @@ login=token
 password='$TOKEN'
 
 $DOMAIN
-game.$DOMAIN
-play.$DOMAIN
-*.$DOMAIN
 EOF
 
+# Add wildcard if user wants it
+if [[ "$WILDCARD" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    echo "*.$DOMAIN" >> /etc/ddclient.conf
+fi
+
+# Add subdomains if provided
+if [ -n "$SUBDOMAINS" ]; then
+    IFS=',' read -ra SUBS <<< "$SUBDOMAINS"
+    for sub in "${SUBS[@]}"; do
+        sub=$(echo "$sub" | xargs)  # trim whitespace
+        if [ -n "$sub" ]; then
+            echo "$sub.$DOMAIN" >> /etc/ddclient.conf
+        fi
+    done
+fi
+
 echo "/etc/ddclient.conf written for $DOMAIN"
+cat /etc/ddclient.conf
+
 chmod 600 /etc/ddclient.conf
 
 systemctl enable --now ddclient
