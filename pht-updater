@@ -73,7 +73,7 @@ printf "%s\n" "${files_to_keep[@]}" > "$TRACK_FILE"
 
 # Report removed scripts
 if [ "${#removed_scripts[@]}" -gt 0 ]; then
-    echo "The following scripts were old and got removed:"
+    echo "The following scripts got removed:"
     for script in "${removed_scripts[@]}"; do
         echo "  - $script"
     done
