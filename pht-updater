@@ -3,6 +3,7 @@
 set -euo pipefail
 
 TARGET_DIR="/usr/local/bin"
+TRACK_FILE="$TARGET_DIR/.pht_scripts"
 REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
 
@@ -12,8 +13,16 @@ echo "Updating Proxmox Helper Toolkit scripts..."
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
+# Ensure tracking file exists
+touch "$TRACK_FILE"
+
 # Get list of files in the repo root
 files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
+
+updated_scripts=()
+new_scripts=()
+files_to_keep=()
+removed_scripts=()
 
 for file in $files; do
     # Skip non-script files
@@ -26,6 +35,18 @@ for file in $files; do
     echo "Downloading $file..."
     curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?cb=$(date +%s)" -o "$TEMP_DIR/$file"
     chmod +x "$TEMP_DIR/$file"
+
+    files_to_keep+=("$file")  # Track downloaded scripts
+
+    # Check if the file already exists and is different
+    if [ -f "$TARGET_DIR/$file" ]; then
+        if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
+            updated_scripts+=("$file")
+        fi
+    else
+        # New file
+        new_scripts+=("$file")
+    fi
 done
 
 # Move files from temp directory to target
@@ -33,5 +54,47 @@ echo "Installing downloaded scripts..."
 for file in "$TEMP_DIR"/*; do
     mv -f "$file" "$TARGET_DIR/"
 done
+
+# Read currently tracked scripts
+mapfile -t tracked_scripts < "$TRACK_FILE"
+
+# Check for old scripts and remove them
+for old_file in "${tracked_scripts[@]}"; do
+    if [[ ! " ${files_to_keep[*]} " == *"$old_file"* ]]; then
+        if [ -f "$TARGET_DIR/$old_file" ]; then
+            removed_scripts+=("$old_file")
+            rm -f "$TARGET_DIR/$old_file"
+        fi
+    fi
+done
+
+# Update tracking file
+printf "%s\n" "${files_to_keep[@]}" > "$TRACK_FILE"
+
+# Report removed scripts
+if [ "${#removed_scripts[@]}" -gt 0 ]; then
+    echo "The following scripts were old and got removed:"
+    for script in "${removed_scripts[@]}"; do
+        echo "  - $script"
+    done
+fi
+
+# Report new scripts
+if [ "${#new_scripts[@]}" -gt 0 ]; then
+    echo "The following scripts were newly installed:"
+    for script in "${new_scripts[@]}"; do
+        echo "  - $script"
+    done
+fi
+
+# Report updated scripts
+if [ "${#updated_scripts[@]}" -gt 0 ]; then
+    echo "The following scripts were updated:"
+    for script in "${updated_scripts[@]}"; do
+        echo "  - $script"
+    done
+else
+    echo "All scripts are already up-to-date."
+fi
 
 echo "Done! All scripts are updated"
