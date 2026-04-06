@@ -1,0 +1,32 @@
+#!/bin/bash
+# Updates everything on the Proxmox node
+
+# shellcheck disable=SC2016
+
+echo "Updating all running containers on the node..."
+echo
+
+bash -c 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
+echo
+
+echo "Updating system packages on the node..."
+echo
+
+bash -c 'apt --assume-yes update && apt --assume-yes upgrade'
+echo
+
+echo "Node update complete."
+echo
+
+# Ask for reboot
+read -rp "Do you want to reboot the node? (y/N): " answer
+
+case "$answer" in
+    [yY]|[yY][eE][sS])
+        echo "Rebooting node..."
+        run_on_cluster 'reboot'
+        ;;
+    *)
+        echo "Skipping reboot."
+        ;;
+esac
