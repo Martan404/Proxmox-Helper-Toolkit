@@ -24,7 +24,7 @@ read -rp "Do you want to reboot the node? (y/N): " answer
 case "$answer" in
     [yY]|[yY][eE][sS])
         echo "Rebooting node..."
-        run_on_cluster 'reboot'
+        bash -c 'reboot'
         ;;
     *)
         echo "Skipping reboot."
