@@ -141,6 +141,8 @@ mount_usb() {
     # Add new entry to device mount file
     grep -q "^$DEVICE " "$MOUNT_FILE" 2>/dev/null || echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
 
+    EXPORT_PATH="${MOUNTPOINT// /\\040}"
+
     case "$FSTYPE" in
         exfat|vfat|ntfs)
             # Add Samba entry
@@ -156,6 +158,8 @@ mount_usb() {
 
                 smbcontrol all reload-config || log "Failed to reload Samba config"
                 log "Added Samba share for $LABEL to $MOUNTPOINT"
+            else
+                log "Added NO Samba share for $LABEL to $MOUNTPOINT"
             fi
             ;;
 
@@ -166,6 +170,8 @@ mount_usb() {
 
                 exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
                 log "Added NFS export for $LABEL to $MOUNTPOINT"
+            else
+                log "Added NO NFS export for $LABEL to $MOUNTPOINT"
             fi
             ;;
     esac
@@ -346,7 +352,7 @@ EOF
 # Server role. Defines in which mode Samba will operate. Possible
 # values are "standalone server", "member server", "classic primary
 # domain controller", "classic backup domain controller", "active
-# directory domain controller". 
+# directory domain controller".
 #
 # Most people will want "standalone server" or "member server".
 # Running as "active directory domain controller" will require first
@@ -399,7 +405,7 @@ EOF
 # --- Remove auto-nas services and rules ---
 remove_script() {
     echo "Removing auto-nas services..."
-    systemctl disable --now smbd 
+    systemctl disable --now smbd
     systemctl disable --now nfs-server
     systemctl disable --now auto-nas@*.service
     systemctl disable --now auto-nas@.service
