@@ -141,6 +141,7 @@ mount_usb() {
     # Add new entry to device mount file
     grep -q "^$DEVICE " "$MOUNT_FILE" 2>/dev/null || echo "$DEVICE $LABEL" >> "$MOUNT_FILE"
 
+    # Sanitize blank spaces and set export path
     EXPORT_PATH="${MOUNTPOINT// /\\040}"
 
     case "$FSTYPE" in
