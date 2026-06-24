@@ -17,8 +17,8 @@ MOUNT_PATH="/mnt/usb"
 MOUNT_FILE="$MOUNT_PATH/.local_mounts"
 SMB_CONF="/etc/samba/smb.conf"
 NFS_EXPORTS="/etc/exports"
-DEFAULT_UID=65534
-DEFAULT_GID=65534
+DEFAULT_UID=100000
+DEFAULT_GID=100000
 DEFAULT_PERMS=777
 INSTALL_LOCATION="/usr/local/bin/auto-nas"
 
@@ -160,19 +160,19 @@ mount_usb() {
                 smbcontrol all reload-config || log "Failed to reload Samba config"
                 log "Added Samba share for $LABEL to $MOUNTPOINT"
             else
-                log "Added NO Samba share for $LABEL to $MOUNTPOINT"
+                log "Already exists. Skipping Samba share for $LABEL to $MOUNTPOINT"
             fi
             ;;
 
         ext4|xfs|btrfs|*)
             # Add NFS entry
             if ! grep -qF "$EXPORT_PATH" "$NFS_EXPORTS" 2>/dev/null; then
-                echo "$EXPORT_PATH *(rw,sync,all_squash)" >> "$NFS_EXPORTS"
+                echo "$EXPORT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" >> "$NFS_EXPORTS"
 
                 exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
                 log "Added NFS export for $LABEL to $MOUNTPOINT"
             else
-                log "Added NO NFS export for $LABEL to $MOUNTPOINT"
+                log "Already exists. Skipping NFS export for $LABEL to $MOUNTPOINT"
             fi
             ;;
     esac
