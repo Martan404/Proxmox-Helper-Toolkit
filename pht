@@ -24,7 +24,7 @@ while IFS= read -r SCRIPT; do
     if [[ -f "$FILE" ]]; then
         DESCRIPTION=$(sed -n '2p' "$FILE")
 
-        echo "$SCRIPT"
+        echo "$(tput setaf 3)$SCRIPT$(tput sgr0)"
         echo "  ${DESCRIPTION:-No description}"
         echo
     fi
