@@ -1,11 +1,12 @@
 #!/bin/bash
 # Adds <Mount Point> to a specified LXC container
 
-set -euo pipefail
-
 CTID="${1:-}"
 MOUNTPOINT="${2:-}"
 MOUNTPOINT_LOCAL="${3:-}"
+DEFAULT_UID=100000
+DEFAULT_GID=100000
+DEFAULT_PERMS=777
 
 # If MOUNTPOINT_LOCAL is empty, use host MOUNTPOINT
 MOUNTPOINT_LOCAL="${MOUNTPOINT_LOCAL:-$MOUNTPOINT}"
@@ -33,11 +34,11 @@ fi
 pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
 
 # --- setting permissions ---
-chown -R 100000:100000 "$MOUNTPOINT"
-chmod -R 777 "$MOUNTPOINT"
+chown -R "$DEFAULT_UID:$DEFAULT_GID" "$MOUNTPOINT"
+chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT"
 
 pct exec "$CTID" -- chown -R :users "$MOUNTPOINT_LOCAL"
-pct exec "$CTID" -- chmod -R 777 "$MOUNTPOINT_LOCAL"
+pct exec "$CTID" -- chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT_LOCAL"
 
 # --- find next free mp index ---
 NEXT_MP=$(pct config "$CTID" | grep -oE '^mp[0-9]+' | sed 's/mp//' | sort -n | tail -1 || true)
