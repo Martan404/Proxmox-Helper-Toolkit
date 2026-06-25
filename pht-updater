@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Install and update Proxmox Helper Toolkit
 
-set -euo pipefail
-
 TARGET_DIR="/usr/local/bin"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
 REPO="Martan404/Proxmox-Helper-Toolkit"
