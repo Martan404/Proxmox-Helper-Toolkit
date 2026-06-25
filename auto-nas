@@ -223,9 +223,9 @@ unmount_usb() {
         fi
 
         # Remove NFS entry
-        if [ -f "$NFS_EXPORTS" ] && grep -qE "^${MOUNTPOINT}[[:space:]]" "$NFS_EXPORTS" 2>/dev/null; then
+        if [ -f "$NFS_EXPORTS" ] && grep -Fxq "$MOUNTPOINT *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" "$NFS_EXPORTS" 2>/dev/null; then
             log "Removing NFS export for $LABEL"
-            sed -i "\|$MOUNTPOINT|d" "$NFS_EXPORTS"
+            sed -i "\|^${MOUNTPOINT}[[:space:]]|d" "$NFS_EXPORTS"
             sed -i '/^[[:space:]]*$/d' "$NFS_EXPORTS"
             exportfs -ra 2>/dev/null || log "Failed to reload NFS config"
         fi
