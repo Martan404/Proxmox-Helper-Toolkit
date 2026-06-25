@@ -1,4 +1,6 @@
 #!/bin/bash
+# Install and configure ddclient for ip renewal
+#
 # GET THE CLOUDFLARE TOKEN FROM HERE!
 # https://dash.cloudflare.com/profile/api-tokens
 # It needs DNS Edit access for your domain/zone
@@ -7,11 +9,11 @@ apt update && apt upgrade -y
 apt install -y ddclient
 
 # Ask user for input
-read -p "Enter your domain (e.g. example.com): " DOMAIN
-read -s -p "Enter your Cloudflare API token: " TOKEN
+read -rp "Enter your domain (e.g. example.com): " DOMAIN
+read -rps "Enter your Cloudflare API token: " TOKEN
 echo
-read -p "Add wildcard (*.$DOMAIN)? (y/n): " WILDCARD
-read -p "Enter subdomains (comma-separated, e.g. game,play): " SUBDOMAINS
+read -rp "Add wildcard (*.$DOMAIN)? (y/n): " WILDCARD
+read -rp "Enter subdomains (comma-separated, e.g. game,play): " SUBDOMAINS
 
 # Write ddclient config file
 cat <<EOF > /etc/ddclient.conf
