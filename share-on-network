@@ -1,0 +1,56 @@
+#!/bin/bash
+# Shares <Path> over the network
+
+# Dependencies
+# apt install -y nfs-kernel-server
+
+MOUNT_PATH="${1:-}"
+NFS_EXPORTS="/etc/exports"
+DEFAULT_UID=100000
+DEFAULT_GID=100000
+DEFAULT_PERMS=777
+
+# --- functions ---
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+# --- checks ---
+if [[ -z "$MOUNT_PATH" ]]; then
+    error_exit "Usage: $0 <Path>"
+fi
+
+if [[ $EUID -ne 0 ]]; then
+    error_exit "Run as root."
+fi
+
+if [[ "$MOUNT_PATH" != /* ]]; then
+    error_exit "Path must be absolute."
+fi
+
+if [[ -e "$MOUNT_PATH" && ! -d "$MOUNT_PATH" ]]; then
+    error_exit "$MOUNT_PATH exists and is not a directory."
+fi
+
+if grep -Fxq "$MOUNT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" "$NFS_EXPORTS" 2>/dev/null; then
+    error_exit "An export for $MOUNT_PATH already exists."
+fi
+
+# --- create mount path ---
+mkdir -p "$MOUNT_PATH"
+
+# --- setting permissions ---
+chown -R "$DEFAULT_UID:$DEFAULT_GID" "$MOUNT_PATH"
+chmod -R "$DEFAULT_PERMS" "$MOUNT_PATH"
+
+# --- add nfs entry ---
+echo "$MOUNT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" >> "$NFS_EXPORTS"
+
+# --- reload exports ---
+if ! exportfs -ra 2>/dev/null; then
+    sed -i "\|^${MOUNT_PATH}[[:space:]]|d" "$NFS_EXPORTS"
+    error_exit "Failed to reload NFS config"
+fi
+
+echo "Created NFS export for $MOUNT_PATH"
