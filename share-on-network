@@ -49,8 +49,12 @@ echo "$MOUNT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID
 
 # --- reload exports ---
 if ! exportfs -ra 2>/dev/null; then
+
+    echo "Failed to reload NFS config"
+    echo "Removing new entry and reloading"
     sed -i "\|^${MOUNT_PATH}[[:space:]]|d" "$NFS_EXPORTS"
-    error_exit "Failed to reload NFS config"
+
+    exportfs -ra 2>/dev/null || error_exit "Failed to reload NFS config after rollback"
 fi
 
 echo "Created NFS export for $MOUNT_PATH"
