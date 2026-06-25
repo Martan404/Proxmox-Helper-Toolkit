@@ -1,6 +1,6 @@
 #!/bin/bash
 # Mount/unmount network drives via NFS and Samba
-#
+
 # Dependencies
 # apt install -y nfs-common cifs-utils
 
