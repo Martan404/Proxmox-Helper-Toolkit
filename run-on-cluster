@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs <command> on every Proxmox node in the cluster, optionally in parallel
+# Runs <Command> on every Proxmox node in the cluster, optionally in parallel
 
 # shellcheck disable=SC2207
 
@@ -12,7 +12,7 @@ if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
 fi
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [--parallel|-p] <command>"
+    echo "Usage: $0 [--parallel|-p] <Command>"
     exit 1
 fi
 
