@@ -7,7 +7,7 @@ CTID="${1:-}"
 MOUNTPOINT="${2:-}"
 MOUNTPOINT_LOCAL="${3:-}"
 
-# If MOUNTPOINT_LOCAL is empty, use MOUNTPOINT
+# If MOUNTPOINT_LOCAL is empty, use host MOUNTPOINT
 MOUNTPOINT_LOCAL="${MOUNTPOINT_LOCAL:-$MOUNTPOINT}"
 
 # --- functions ---
@@ -25,17 +25,22 @@ if ! pct status "$CTID" &>/dev/null; then
     error_exit "Container $CTID does not exist."
 fi
 
-# --- create container mount path ---
-if [[ ! -e "$MOUNTPOINT_LOCAL" ]]; then
-    pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
+if pct config "$CTID" | grep '^mp[0-9]\+:' | sed -n 's/.*mp=\([^,]*\).*/\1/p' | grep -Fxq "$MOUNTPOINT_LOCAL"; then
+    echo "Container path already mounted."
 fi
 
+# --- create container mount path ---
+pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
+
 # --- setting permissions ---
-chown -R nobody:nogroup "$MOUNTPOINT_LOCAL"
-pct exec "$CTID" -- chown -R nobody:nogroup "$MOUNTPOINT_LOCAL"
+chown -R 100000:100000 "$MOUNTPOINT"
+chmod -R 777 "$MOUNTPOINT"
+
+pct exec "$CTID" -- chown -R :users "$MOUNTPOINT_LOCAL"
+pct exec "$CTID" -- chmod -R 777 "$MOUNTPOINT_LOCAL"
 
 # --- find next free mp index ---
-NEXT_MP=$(pct config "$CTID" | grep -oP '^mp\d+' | sed 's/mp//' | sort -n | tail -1)
+NEXT_MP=$(pct config "$CTID" | grep -oE '^mp[0-9]+' | sed 's/mp//' | sort -n | tail -1 || true)
 
 if [[ -z "$NEXT_MP" ]]; then
     NEXT_MP=0
