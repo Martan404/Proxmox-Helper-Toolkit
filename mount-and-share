@@ -1,0 +1,116 @@
+#!/bin/bash
+# Creates a directory and shares it to a LXC container and shares it over the network
+
+# Dependencies
+# apt install -y nfs-kernel-server
+# pacman -Syu --noconfirm nfs-utils
+# dnf install -y nfs-utils
+# zypper install -y nfs-kernel-server
+
+MOUNT_PATH="/mnt/lan"
+NFS_EXPORTS="/etc/exports"
+DEFAULT_UID=100000
+DEFAULT_GID=100000
+DEFAULT_PERMS=777
+
+# --- functions ---
+error_exit() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+[[ $EUID -eq 0 ]] || error_exit "Run as root."
+
+# --- ask for label ---
+while true; do
+    read -rp "Enter directory name for share: /mnt/lan/" LABEL
+
+    [[ -z "$LABEL" ]] && continue
+
+    [[ "$LABEL" =~ ^[a-zA-Z0-9._-]+$ ]] || {
+        echo "Invalid name"
+        continue
+    }
+
+    MOUNTPOINT="${MOUNT_PATH}/${LABEL}"
+
+    if [[ -e "$MOUNTPOINT" && ! -d "$MOUNTPOINT" ]]; then
+        echo "$MOUNTPOINT exists and is not a directory."
+        continue
+    fi
+
+    if grep -qE "^${MOUNTPOINT}[[:space:]]" "$NFS_EXPORTS" 2>/dev/null; then
+        echo "An export for that path ($MOUNTPOINT) already exists in $NFS_EXPORTS."
+        continue
+    fi
+
+    read -rp "Is this correct? [y/N]: " CONFIRM
+    [[ "$CONFIRM" =~ ^[Yy]$ ]] && break
+done
+
+# --- ask for container id ---
+while true; do
+    read -rp "Container ID: " CTID
+
+    if pct status "$CTID" &>/dev/null; then
+        read -rp "Use container $CTID? [y/N]: " CONFIRM
+
+        [[ "$CONFIRM" =~ ^[Yy]$ ]] && break
+    else
+        echo "Container does not exist."
+    fi
+done
+
+# --- ask for container mountpoint ---
+while true; do
+    read -rp "Mount path inside container: " MOUNTPOINT_LOCAL
+
+    if pct config "$CTID" | grep '^mp[0-9]\+:' | sed -n 's/.*mp=\([^,]*\).*/\1/p' | grep -Fxq "$MOUNTPOINT_LOCAL"; then
+        echo "Container path already mounted."
+        continue
+    fi
+
+    read -rp "Is this correct? [y/N]: " CONFIRM
+    [[ "$CONFIRM" =~ ^[Yy]$ ]] && break
+done
+
+# --- create mount path ---
+mkdir -p "$MOUNTPOINT"
+
+# --- create container mount path ---
+pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
+
+# --- setting permissions ---
+chown -R "$DEFAULT_UID:$DEFAULT_GID" "$MOUNTPOINT"
+chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT"
+
+pct exec "$CTID" -- chown -R :users "$MOUNTPOINT_LOCAL"
+pct exec "$CTID" -- chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT_LOCAL"
+
+# --- find next free mp index ---
+NEXT_MP=$(pct config "$CTID" | grep -oE '^mp[0-9]+' | sed 's/mp//' | sort -n | tail -1 || true)
+
+if [[ -z "$NEXT_MP" ]]; then
+    NEXT_MP=0
+else
+    NEXT_MP=$((NEXT_MP + 1))
+fi
+
+# --- add mount ---
+echo "Adding mount as mp${NEXT_MP} to container $CTID..."
+if ! pct set "$CTID" -mp${NEXT_MP} "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}"; then
+    rmdir "$MOUNTPOINT" 2>/dev/null || true
+    error_exit "Failed to add mount."
+fi
+
+echo "Mount path added successfully to container $CTID."
+
+# --- add nfs entry ---
+echo "$MOUNTPOINT *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" >> "$NFS_EXPORTS"
+
+if ! exportfs -ra 2>/dev/null; then
+    sed -i "\|^${MOUNTPOINT}[[:space:]]|d" "$NFS_EXPORTS"
+    error_exit "Failed to reload NFS config"
+fi
+
+echo "Added NFS export for $MOUNTPOINT"
