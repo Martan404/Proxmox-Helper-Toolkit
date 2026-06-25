@@ -10,8 +10,6 @@
 # journalctl -t auto-nas        # check logs
 # journalctl -t auto-nas -f     # live logs
 
-set -o pipefail
-
 # --- Global constants ---
 MOUNT_PATH="/mnt/usb"
 MOUNT_FILE="$MOUNT_PATH/.local_mounts"
@@ -225,7 +223,7 @@ unmount_usb() {
         fi
 
         # Remove NFS entry
-        if [ -f "$NFS_EXPORTS" ] && grep -qF "$MOUNTPOINT" "$NFS_EXPORTS" 2>/dev/null; then
+        if [ -f "$NFS_EXPORTS" ] && grep -qE "^${MOUNTPOINT}[[:space:]]" "$NFS_EXPORTS" 2>/dev/null; then
             log "Removing NFS export for $LABEL"
             sed -i "\|$MOUNTPOINT|d" "$NFS_EXPORTS"
             sed -i '/^[[:space:]]*$/d' "$NFS_EXPORTS"
