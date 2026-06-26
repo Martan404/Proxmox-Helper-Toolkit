@@ -1,5 +1,5 @@
 #!/bin/bash
-# Adds <Mount Point> to a specified LXC container
+# Adds <mount-point> to a LXC container
 
 CTID="${1:-}"
 MOUNTPOINT="${2:-}"
@@ -11,15 +11,15 @@ DEFAULT_PERMS=777
 # If MOUNTPOINT_LOCAL is empty, use host MOUNTPOINT
 MOUNTPOINT_LOCAL="${MOUNTPOINT_LOCAL:-$MOUNTPOINT}"
 
-# --- functions ---
+# Functions
 error_exit() {
     echo "Error: $1" >&2
     exit 1
 }
 
-# --- checks ---
+# Checks
 if [[ -z "$CTID" ]]; then
-    error_exit "Usage: $0 <Container ID> <Mount Point> <Local Mount Point>"
+    error_exit "Usage: $0 <container-id> <mount-point> <local-mount-point>"
 fi
 
 if ! pct status "$CTID" &>/dev/null; then
@@ -30,17 +30,17 @@ if pct config "$CTID" | grep '^mp[0-9]\+:' | sed -n 's/.*mp=\([^,]*\).*/\1/p' | 
     echo "Container path already mounted."
 fi
 
-# --- create container mount path ---
+# Create container mount path
 pct exec "$CTID" -- mkdir -p "$MOUNTPOINT_LOCAL" || error_exit "Failed to create mount path inside container."
 
-# --- setting permissions ---
+# Setting permissions
 chown -R "$DEFAULT_UID:$DEFAULT_GID" "$MOUNTPOINT"
 chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT"
 
 pct exec "$CTID" -- chown -R :users "$MOUNTPOINT_LOCAL"
 pct exec "$CTID" -- chmod -R "$DEFAULT_PERMS" "$MOUNTPOINT_LOCAL"
 
-# --- find next free mp index ---
+# Find next free mp index
 NEXT_MP=$(pct config "$CTID" | grep -oE '^mp[0-9]+' | sed 's/mp//' | sort -n | tail -1 || true)
 
 if [[ -z "$NEXT_MP" ]]; then
@@ -49,7 +49,7 @@ else
     NEXT_MP=$((NEXT_MP + 1))
 fi
 
-# --- add mount ---
+# Add mount
 echo "Adding mount as mp${NEXT_MP} to container $CTID..."
 pct set "$CTID" -mp${NEXT_MP} "${MOUNTPOINT},mp=${MOUNTPOINT_LOCAL}" || error_exit "Failed to add mount."
 

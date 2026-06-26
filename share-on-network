@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shares <Path> over the network
+# Shares <path> over the network
 
 # Dependencies
 # apt install -y nfs-kernel-server
@@ -10,15 +10,15 @@ DEFAULT_UID=100000
 DEFAULT_GID=100000
 DEFAULT_PERMS=777
 
-# --- functions ---
+# Functions
 error_exit() {
     echo "Error: $1" >&2
     exit 1
 }
 
-# --- checks ---
+# Checks
 if [[ -z "$MOUNT_PATH" ]]; then
-    error_exit "Usage: $0 <Path>"
+    error_exit "Usage: $0 <path>"
 fi
 
 if [[ $EUID -ne 0 ]]; then
@@ -37,17 +37,17 @@ if grep -Fxq "$MOUNT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEF
     error_exit "An export for $MOUNT_PATH already exists."
 fi
 
-# --- create mount path ---
+# Create mount path
 mkdir -p "$MOUNT_PATH"
 
-# --- setting permissions ---
+# Setting permissions
 chown -R "$DEFAULT_UID:$DEFAULT_GID" "$MOUNT_PATH"
 chmod -R "$DEFAULT_PERMS" "$MOUNT_PATH"
 
-# --- add nfs entry ---
+# Add nfs entry
 echo "$MOUNT_PATH *(rw,sync,all_squash,anonuid=$DEFAULT_UID,anongid=$DEFAULT_GID)" >> "$NFS_EXPORTS"
 
-# --- reload exports ---
+# Reload exports
 if ! exportfs -ra 2>/dev/null; then
 
     echo "Failed to reload NFS config"

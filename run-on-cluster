@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs <Command> on every Proxmox node in the cluster, optionally in parallel
+# Runs <command> on every Proxmox node in the cluster, optionally in parallel
 
 # shellcheck disable=SC2207
 
@@ -12,7 +12,7 @@ if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
 fi
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [--parallel|-p] <Command>"
+    echo "Usage: $0 [--parallel|-p] <command>"
     exit 1
 fi
 
@@ -34,7 +34,7 @@ run_command() {
     echo "[ $NODE ]"
 
     # Get the node's IP from vmbr0
-    NODE_IP=$(pvesh get /nodes/$NODE/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
+    NODE_IP=$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
 
     if [[ -z "$NODE_IP" ]]; then
         echo -e "[ WARNING ] Could not determine IP for $NODE, skipping."

@@ -1,16 +1,14 @@
 #!/bin/bash
 # Automatically mount/unmount connected USB drives and share via NFS and Samba
-#
+
 # Dependencies
 # apt install -y nfs-kernel-server exfatprogs samba ntfs-3g
 # pacman -Syu --noconfirm nfs-utils exfatprogs samba ntfs-3g
 # dnf install -y nfs-utils exfatprogs samba ntfs-3g
 # zypper install -y nfs-kernel-server exfatprogs samba ntfs-3g
-#
-# journalctl -t auto-nas        # check logs
-# journalctl -t auto-nas -f     # live logs
 
-# --- Global constants ---
+# Global constants
+SCRIPT_NAME="$(basename "$0")"
 MOUNT_PATH="/mnt/usb"
 MOUNT_FILE="$MOUNT_PATH/.local_mounts"
 SMB_CONF="/etc/samba/smb.conf"
@@ -18,16 +16,16 @@ NFS_EXPORTS="/etc/exports"
 DEFAULT_UID=100000
 DEFAULT_GID=100000
 DEFAULT_PERMS=777
-INSTALL_LOCATION="/usr/local/bin/auto-nas"
+INSTALL_LOCATION="/usr/local/bin/$SCRIPT_NAME"
 
 USAGE="Usage:
-    auto-nas status               (Lists mounted USB drives)
-    auto-nas mount <DEVICE>       (Mounts a drive to $MOUNT_PATH)
-    auto-nas unmount <DEVICE>     (Unmounts a drive from $MOUNT_PATH)
-    auto-nas logs <live|recent>   (Check auto-nas logs)
-    auto-nas install              (Install auto-nas)
-    auto-nas remove               (Remove auto-nas)
-    auto-nas setup                (Install dependencies)
+    $SCRIPT_NAME status               (Lists mounted USB drives)
+    $SCRIPT_NAME mount <DEVICE>       (Mounts a drive to $MOUNT_PATH)
+    $SCRIPT_NAME unmount <DEVICE>     (Unmounts a drive from $MOUNT_PATH)
+    $SCRIPT_NAME logs <live|recent>   (Check $SCRIPT_NAME logs)
+    $SCRIPT_NAME install              (Install $SCRIPT_NAME)
+    $SCRIPT_NAME remove               (Remove $SCRIPT_NAME)
+    $SCRIPT_NAME setup                (Install dependencies)
 
 Automatically mount/unmount connected USB drives and share via NFS and Samba"
 
@@ -39,19 +37,19 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
-# --- Helper: print error and exit ---
+# Helper: print error and exit
 error_exit() {
     echo "Error: $1" >&2
     exit 1
 }
 
-# --- Helper: log events ---
+# Helper: log events
 log() {
     local msg="$1"
-    /usr/bin/logger -t auto-nas "$msg"
+    /usr/bin/logger -t "$SCRIPT_NAME" "$msg"
 }
 
-# --- Status: List all mounted USB drives ---
+# Status: List all mounted USB drives
 status_usb() {
     echo "Currently mounted USB drives:"
     echo "--------------------------------------------"
@@ -70,10 +68,10 @@ status_usb() {
     fi
 }
 
-# --- Mount USB device ---
+# Mount USB device
 mount_usb() {
     DEVICE="${1:-}"
-    [ -b "$DEVICE" ] || error_exit "Usage: auto-nas mount <DEVICE>"
+    [ -b "$DEVICE" ] || error_exit "Usage: $SCRIPT_NAME mount <DEVICE>"
 
     udevadm settle --timeout=5
 
@@ -176,12 +174,12 @@ mount_usb() {
     esac
 }
 
-# --- Unmount USB device ---
+# Unmount USB device
 unmount_usb() {
     DEVICE="${1:-}"
 
     # Only allow one unmount at a time
-    LOCKFILE="/var/lock/auto-nas-unmount.lock"
+    LOCKFILE="/var/lock/$SCRIPT_NAME-unmount.lock"
     exec 200>"$LOCKFILE"
     log "Waiting for other unmounts to finish if necessary..."
     flock 200
@@ -246,12 +244,12 @@ unmount_usb() {
     done
 }
 
-# --- Install auto-nas services ---
+# Install $SCRIPT_NAME services
 install_script() {
-    echo "Setting up auto-nas..."
+    echo "Setting up $SCRIPT_NAME..."
 
     if ! [ "$0" = "$INSTALL_LOCATION" ]; then
-        echo "Moving auto-nas to $INSTALL_LOCATION..."
+        echo "Moving $SCRIPT_NAME to $INSTALL_LOCATION..."
         rm -f "$INSTALL_LOCATION" || true
         mv "$0" "$INSTALL_LOCATION"
         chmod +x "$INSTALL_LOCATION"
@@ -263,15 +261,15 @@ install_script() {
     chmod "$DEFAULT_PERMS" "$MOUNT_PATH"
 
     echo "Installing main service..."
-    cat > /etc/systemd/system/auto-nas@.service <<'EOF'
+    cat > /etc/systemd/system/"$SCRIPT_NAME"@.service <<'EOF'
 [Unit]
-Description=auto-nas usb mounter
+Description=$SCRIPT_NAME usb mounter
 After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/auto-nas mount /dev/%i
-ExecStop=/usr/local/bin/auto-nas unmount /dev/%i
+ExecStart=/usr/local/bin/$SCRIPT_NAME mount /dev/%i
+ExecStop=/usr/local/bin/$SCRIPT_NAME unmount /dev/%i
 RemainAfterExit=yes
 
 [Install]
@@ -280,14 +278,14 @@ EOF
 
     echo "Creating udev rules..."
     mkdir -p /etc/udev/rules.d
-    cat > /etc/udev/rules.d/99-auto-nas.rules <<'EOF'
+    cat > /etc/udev/rules.d/99-"$SCRIPT_NAME".rules <<'EOF'
 # Mount on add
 ACTION=="add", SUBSYSTEM=="block", ENV{ID_USB_TYPE}!="", ENV{ID_FS_USAGE}=="filesystem", \
-    TAG+="systemd", ENV{SYSTEMD_WANTS}="auto-nas@%k.service"
+    TAG+="systemd", ENV{SYSTEMD_WANTS}="$SCRIPT_NAME@%k.service"
 
 # Unmount on remove and trigger cleanup
 ACTION=="remove", SUBSYSTEM=="block", ENV{ID_USB_TYPE}!="", ENV{ID_FS_USAGE}=="filesystem", \
-    TAG+="systemd", RUN+="/bin/systemctl stop 'auto-nas@%k.service'"
+    TAG+="systemd", RUN+="/bin/systemctl stop '$SCRIPT_NAME@%k.service'"
 EOF
 
     echo "Writing $NFS_EXPORTS..."
@@ -398,19 +396,19 @@ EOF
     udevadm trigger
     } >/dev/null 2>&1
 
-    echo "auto-nas installed"
+    echo "$SCRIPT_NAME installed"
 }
 
-# --- Remove auto-nas services and rules ---
+# Remove $SCRIPT_NAME services and rules
 remove_script() {
-    echo "Removing auto-nas services..."
+    echo "Removing $SCRIPT_NAME services..."
     systemctl disable --now smbd
     systemctl disable --now nfs-server
-    systemctl disable --now auto-nas@*.service
-    systemctl disable --now auto-nas@.service
+    systemctl disable --now "$SCRIPT_NAME"@*.service
+    systemctl disable --now "$SCRIPT_NAME"@.service
 
-    rm -f /etc/systemd/system/auto-nas@.service
-    rm -f /etc/udev/rules.d/99-auto-nas.rules
+    rm -f /etc/systemd/system/"$SCRIPT_NAME"@.service
+    rm -f /etc/udev/rules.d/99-"$SCRIPT_NAME".rules
     rm -f "$SMB_CONF"
     rm -f "$NFS_EXPORTS"
 
@@ -419,8 +417,8 @@ remove_script() {
     udevadm control --reload-rules
     } >/dev/null 2>&1
 
-    echo "auto-nas removed"
-    rm -f /usr/local/bin/auto-nas
+    echo "$SCRIPT_NAME removed"
+    rm -f /usr/local/bin/"$SCRIPT_NAME"
     exit 0
 }
 
@@ -462,18 +460,18 @@ local mode="${1:-}"
 
     case "$mode" in
         live)
-            journalctl -t auto-nas -f
+            journalctl -t "$SCRIPT_NAME" -f
             ;;
         recent)
-            journalctl -t auto-nas -n 10 --no-pager
+            journalctl -t "$SCRIPT_NAME" -n 10 --no-pager
             ;;
         *)
-            journalctl -t auto-nas
+            journalctl -t "$SCRIPT_NAME"
             ;;
     esac
 }
 
-# --- Main dispatcher ---
+# Main dispatcher
 case "$SUBCMD" in
     mount) mount_usb "$@" ;;
     unmount) unmount_usb "$@" ;;
