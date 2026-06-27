@@ -85,9 +85,7 @@ if [[ -d "$PHT_DIR" ]]; then
 
     while IFS= read -r file; do
 
-        relative="pht-files/$(basename "$file")"
-
-        installed_files["$relative"]=1
+        installed_files["pht-files/${file##*/}"]=1
 
     done < <(find "$PHT_DIR" -maxdepth 1 -type f)
 
@@ -112,7 +110,15 @@ done
 # Install/update files
 echo "Installing files..."
 
-cp -a "$TEMP_DIR/." "$TARGET_DIR/"
+while IFS= read -r -d '' file; do
+
+    relative="${file#"$TEMP_DIR/"}"
+
+    mkdir -p "$TARGET_DIR/$(dirname "$relative")"
+
+    mv -f "$file" "$TARGET_DIR/$relative"
+
+done < <(find "$TEMP_DIR" -type f -print0)
 
 # Update root script tracker
 printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
