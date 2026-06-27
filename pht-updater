@@ -98,6 +98,9 @@ for old_file in "${!installed_files[@]}"; do
 
     if [[ -z "${repo_files[$old_file]}" ]]; then
 
+        # Ignore directories
+        [[ -d "$TARGET_DIR/$old_file" ]] && continue
+
         file_status["$old_file"]="removed"
 
         rm -f "$TARGET_DIR/$old_file"
