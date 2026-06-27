@@ -2,6 +2,7 @@
 # Interactive menu to use the Proxmox Helper Toolkit
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+TRACK_FILE="$SCRIPT_DIR/.pht_scripts"
 
 # -------------------------
 # Source bash-tui-toolkit
