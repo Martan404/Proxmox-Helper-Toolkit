@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lists installed Proxmox Helper Toolkit scripts and descriptions
+# Interactive menu to use the Proxmox Helper Toolkit
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
@@ -20,9 +20,51 @@ source "$SCRIPT_DIR/.bash-tui-toolkit.bash"
 # -------------------------
 
 if [[ ! -f "$TRACK_FILE" ]]; then
-    echo "Install Proxmox Helper Toolkit using pht-updater before running this script"
+    show_error "Install Proxmox Helper Toolkit using pht-updater before running this script"
     read -rp "Press enter to continue..."
 fi
+
+# -------------------------
+# List scripts
+# -------------------------
+
+list_scripts() {
+    [[ -f "$TRACK_FILE" ]] || {
+        show_error "Install Proxmox Helper Toolkit using pht-updater before running this script"
+        return 1
+    }
+
+    while IFS= read -r script; do
+
+        [[ -z "$script" ]] && continue
+
+        # Ignore metadata files
+        [[ "$script" == *.pht ]] && continue
+
+        [[ -f "$SCRIPT_DIR/$script" ]] || continue
+
+        if [[ -f "$SCRIPT_DIR/$script.pht" ]]; then
+
+            parse_pht "$SCRIPT_DIR/$script.pht"
+
+            printf "\e[33m%s\e[0m\n" "${META[title]:-$script}"
+
+            [[ -n "${META[description]}" ]] &&
+                printf "  %s\n" "${META[description]}"
+
+        else
+
+            description="$(sed -n '2{s/^# *//;p}' "$SCRIPT_DIR/$script")"
+
+            printf "\e[33m%s\e[0m\n" "$script"
+            printf "  %s\n" "${description:-No description}"
+
+        fi
+
+        echo
+
+    done < "$TRACK_FILE"
+}
 
 # -------------------------
 # Global storage
@@ -500,6 +542,25 @@ run_action() {
 # -------------------------
 
 clear
+
+case "${1:-}" in
+
+    list)
+        list_scripts
+        exit $?
+        ;;
+
+
+    "")
+        ;;
+
+
+    *)
+        show_error "Unknown command: $1"
+        exit 1
+        ;;
+
+esac
 
 while true; do
     echo "Loading..."
