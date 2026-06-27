@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install and update Proxmox Helper Toolkit
 #v0002
+SCRIPT_NAME="$(basename "$0")"
 TARGET_DIR="/usr/local/bin"
 PHT_DIR="$TARGET_DIR/pht-files"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
@@ -143,12 +144,8 @@ while IFS= read -r -d '' file; do
 
     mkdir -p "$TARGET_DIR/$(dirname "$relative")"
 
-    #
-    # Special handling for updater:
-    # copy last so the running updater survives
-    #
-
-    if [[ "$relative" == "pht-updater" ]]; then
+    # Skip this script til last
+    if [[ "$relative" == "$SCRIPT_NAME" ]]; then
         continue
     fi
 
@@ -164,16 +161,13 @@ done < <(find "$TEMP_DIR/repo" -type f -print0)
 printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
 
 #
-# Replace updater last
+# Replace this script
 #
 
-if [[ -f "$TEMP_DIR/repo/pht-updater" ]]; then
+if [[ -f "$TEMP_DIR/repo/$SCRIPT_NAME" ]]; then
 
-    cp -f \
-        "$TEMP_DIR/repo/pht-updater" \
-        "$TARGET_DIR/pht-updater"
-
-    chmod +x "$TARGET_DIR/pht-updater"
+    cp -f "$TEMP_DIR/repo/$SCRIPT_NAME" "$TARGET_DIR/$SCRIPT_NAME"
+    chmod +x "$TARGET_DIR/$SCRIPT_NAME"
 
 fi
 
