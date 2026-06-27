@@ -1,0 +1,13 @@
+title = "Update Proxmox Node"
+description = "Updates containers and packages on the current Proxmox node"
+
+
+[action]
+name = "Update Node"
+command = ""
+
+[confirm]
+message = "Update this Proxmox node?"
+[/confirm]
+
+[/action]

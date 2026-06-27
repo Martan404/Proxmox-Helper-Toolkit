@@ -1,0 +1,9 @@
+title = ".pht validator"
+description = "Check .pht files for errors"
+hidden=true
+
+[action]
+name = "Validate .pht files"
+command = ""
+default=true
+[/action]

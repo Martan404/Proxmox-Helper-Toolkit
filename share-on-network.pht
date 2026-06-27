@@ -1,0 +1,15 @@
+title = "Share Folder Over Network"
+description = "Creates an NFS export"
+
+
+[action]
+name = "Create NFS Share"
+command = ""
+
+[field]
+name = "path"
+label = "Folder to share"
+type = "path"
+[/field]
+
+[/action]

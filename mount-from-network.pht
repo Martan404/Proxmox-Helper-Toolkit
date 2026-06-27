@@ -1,0 +1,27 @@
+title = "Mount Network Drives"
+description = "Mount and unmount network drives via NFS and Samba"
+
+
+[action]
+name = "Mount NFS Share"
+command = "mount-nfs"
+
+[field]
+name = "server"
+label = "Server IP"
+type = "ipv4"
+[/field]
+
+[field]
+name = "remote_path"
+label = "Remote Export"
+type = "path"
+[/field]
+
+[field]
+name = "local_name"
+label = "Local Mount Name"
+type = "input"
+[/field]
+
+[/action]

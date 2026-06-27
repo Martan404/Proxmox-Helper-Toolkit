@@ -1,0 +1,9 @@
+title = "Proxmox Helper Toolkit list"
+description = "List every script in Proxmox Helper Toolkit"
+hidden=true
+
+[action]
+name = "List scripts"
+command = ""
+default=true
+[/action]

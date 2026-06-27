@@ -1,0 +1,14 @@
+title = "DDClient installer"
+description = "Install and configure ddclient for Cloudflare DNS updates"
+
+
+[action]
+name = "Install DDClient"
+command = ""
+default=true
+
+[confirm]
+message = "Install and configure ddclient?"
+[/confirm]
+
+[/action]

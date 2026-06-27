@@ -1,0 +1,99 @@
+title = "Auto NAS"
+description = "Automatically mount USB drives and share them via NFS and Samba"
+
+
+[action]
+name = "Show Mounted Drives"
+command = "status"
+
+[/action]
+
+
+[action]
+name = "Mount USB Drive"
+command = "mount"
+hidden = true
+
+[field]
+name = "device"
+label = "Device"
+type = "input"
+[/field]
+
+[/action]
+
+
+[action]
+name = "Unmount USB Drive"
+command = "unmount"
+hidden = true
+
+[field]
+name = "device"
+label = "Device"
+type = "input"
+[/field]
+
+[/action]
+
+
+[action]
+name = "Show Logs"
+command = "logs"
+
+[field]
+name = "type"
+label = "Log Type"
+type = "list"
+
+[option]
+value = "live"
+label = "Live"
+[/option]
+
+[option]
+value = "recent"
+label = "Recent"
+[/option]
+
+[option]
+value = ""
+label = "All"
+[/option]
+
+[/field]
+
+[/action]
+
+
+[action]
+name = "Install Auto NAS"
+command = "install"
+
+[confirm]
+message = "Install Auto NAS?"
+[/confirm]
+
+[/action]
+
+
+[action]
+name = "Remove Auto NAS"
+command = "remove"
+
+[confirm]
+message = "Remove Auto NAS?"
+[/confirm]
+
+[/action]
+
+
+[action]
+name = "Setup Dependencies"
+command = "setup"
+
+[confirm]
+message = "Install Auto NAS dependencies?"
+[/confirm]
+
+[/action]

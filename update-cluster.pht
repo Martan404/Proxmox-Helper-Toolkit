@@ -1,0 +1,19 @@
+title = "Update Cluster"
+description = "Updates containers and packages across the Proxmox cluster"
+
+
+[action]
+name = "Update Cluster"
+command = ""
+
+[flag]
+name = "parallel"
+label = "Update nodes in parallel"
+argument = "--parallel"
+[/flag]
+
+[confirm]
+message = "Update the entire cluster?"
+[/confirm]
+
+[/action]

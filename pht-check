@@ -1,0 +1,499 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+ERRORS=0
+
+
+error() {
+    echo "✗ $1"
+    ERRORS=$((ERRORS + 1))
+    FILE_ERRORS=$((FILE_ERRORS + 1))
+}
+
+
+success() {
+    echo "✓ $1"
+}
+
+
+trim() {
+    echo "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+
+clean_value() {
+    local value="$1"
+
+    value="$(trim "$value")"
+    value="${value#\"}"
+    value="${value%\"}"
+
+    echo "$value"
+}
+
+
+check_pht() {
+
+    local pht_file="$1"
+    local script_name
+
+    script_name="$(basename "$pht_file" .pht)"
+
+    FILE_ERRORS=0
+
+    echo
+    echo "$script_name"
+
+
+    if [[ ! -f "$SCRIPT_DIR/$script_name" ]]; then
+        error "Missing script: $script_name"
+    fi
+
+
+    title=""
+    description=""
+    hidden=""
+
+
+    actions=0
+    visible_actions=0
+    default_actions=0
+
+    field_count=0
+    option_count=0
+
+    current=""
+
+
+    declare -A ACTION_NAME
+    declare -A ACTION_COMMAND
+    declare -A ACTION_DEFAULT
+    declare -A ACTION_HIDDEN
+
+    declare -A FIELD_NAME
+    declare -A FIELD_TYPE
+
+    declare -A OPTION_LABEL
+    declare -A OPTION_VALUE
+    declare -A OPTION_FIELD
+
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+
+        line="${line%%#*}"
+        line="$(trim "$line")"
+
+        [[ -z "$line" ]] && continue
+
+
+        case "$line" in
+
+            "[action]")
+
+                current="action"
+
+                action=$actions
+                actions=$((actions + 1))
+
+                ;;
+
+
+            "[/action]")
+
+                current=""
+
+                ;;
+
+
+            "[field]")
+
+                current="field"
+
+                field=$field_count
+                field_count=$((field_count + 1))
+
+                ;;
+
+
+            "[/field]")
+
+                current="action"
+
+                ;;
+
+
+            "[option]")
+
+                if [[ -z "${field+x}" ]]; then
+                    error "Option defined outside field"
+                fi
+
+                current="option"
+
+                option=$option_count
+                option_count=$((option_count + 1))
+
+                OPTION_FIELD[$option]="$field"
+
+                ;;
+
+
+            "[/option]")
+
+                current="field"
+
+                ;;
+
+
+            "[flag]")
+
+                current="flag"
+
+                ;;
+
+
+            "[/flag]")
+
+                current="action"
+
+                ;;
+
+
+            "[confirm]")
+
+                current="confirm"
+
+                ;;
+
+
+            "[/confirm]")
+
+                current="action"
+
+                ;;
+
+
+            *)
+
+                key="${line%%=*}"
+                value="${line#*=}"
+
+                key="$(trim "$key")"
+                value="$(clean_value "$value")"
+
+
+                case "$current" in
+
+                    "")
+
+                        case "$key" in
+
+                            title)
+                                title="$value"
+                                ;;
+
+                            description)
+                                description="$value"
+                                ;;
+
+                            hidden)
+                                hidden="$value"
+                                ;;
+
+                        esac
+
+                        ;;
+
+
+                    action)
+
+                        case "$key" in
+
+                            name)
+                                ACTION_NAME[$action]="$value"
+                                ;;
+
+                            command)
+                                ACTION_COMMAND[$action]="$value"
+                                ;;
+
+                            default)
+                                ACTION_DEFAULT[$action]="$value"
+                                ;;
+
+                            hidden)
+                                ACTION_HIDDEN[$action]="$value"
+                                ;;
+
+                        esac
+
+                        ;;
+
+
+                    field)
+
+                        case "$key" in
+
+                            name)
+                                FIELD_NAME[$field]="$value"
+                                ;;
+
+                            type)
+                                FIELD_TYPE[$field]="$value"
+                                ;;
+
+                        esac
+
+                        ;;
+
+
+                    option)
+
+                        case "$key" in
+
+                            label)
+                                OPTION_LABEL[$option]="$value"
+                                ;;
+
+                            value)
+                                OPTION_VALUE[$option]="$value"
+                                ;;
+
+                        esac
+
+                        ;;
+
+                esac
+
+                ;;
+
+        esac
+
+    done < "$pht_file"
+
+
+
+    #
+    # Metadata
+    #
+
+    if [[ -z "$title" ]]; then
+        error "Missing title"
+    fi
+
+
+    if [[ -z "$description" ]]; then
+        error "Missing description"
+    fi
+
+
+    case "$hidden" in
+
+        true|false|"")
+            ;;
+
+        *)
+            error "Invalid hidden value '$hidden'"
+            ;;
+
+    esac
+
+
+
+    #
+    # Actions
+    #
+
+    if [[ $actions -eq 0 ]]; then
+
+        error "No actions defined"
+
+    else
+
+        for ((i=0; i<actions; i++)); do
+
+            if [[ -z "${ACTION_NAME[$i]}" ]]; then
+                error "Action $((i+1)) missing name"
+            fi
+
+
+            if [[ -z "${ACTION_COMMAND[$i]+exists}" ]]; then
+                error "Action $((i+1)) missing command"
+            fi
+
+
+            case "${ACTION_DEFAULT[$i]}" in
+
+                true|"")
+                    ;;
+
+                *)
+                    error "Action $((i+1)) has invalid default value"
+                    ;;
+
+            esac
+
+
+            case "${ACTION_HIDDEN[$i]}" in
+
+                true|false|"")
+                    ;;
+
+                *)
+                    error "Action $((i+1)) has invalid hidden value"
+                    ;;
+
+            esac
+
+
+            if [[ "${ACTION_DEFAULT[$i]}" == "true" ]]; then
+                default_actions=$((default_actions + 1))
+            fi
+
+
+            if [[ "${ACTION_HIDDEN[$i]}" != "true" ]]; then
+                visible_actions=$((visible_actions + 1))
+            fi
+
+        done
+
+
+        if [[ $default_actions -gt 1 ]]; then
+            error "Multiple default actions"
+        fi
+
+
+        if [[ $visible_actions -eq 0 && $default_actions -eq 0 ]]; then
+            error "No visible actions and no default action"
+        fi
+
+    fi
+
+
+
+    #
+    # Fields
+    #
+
+    declare -A seen_values
+
+    for ((i=0; i<field_count; i++)); do
+
+        if [[ -z "${FIELD_NAME[$i]}" ]]; then
+            error "Field $((i+1)) missing name"
+        fi
+
+
+        case "${FIELD_TYPE[$i]}" in
+
+            input|password|path|ipv4|number)
+                ;;
+
+
+            list)
+
+                found_options=0
+
+                for ((o=0; o<option_count; o++)); do
+
+                    if [[ "${OPTION_FIELD[$o]}" == "$i" ]]; then
+
+                        found_options=$((found_options + 1))
+
+
+                        if [[ -z "${OPTION_LABEL[$o]}" ]]; then
+                            error "List field '${FIELD_NAME[$i]}' option $found_options missing label"
+                        fi
+
+
+                        if [[ -z "${OPTION_VALUE[$o]+exists}" ]]; then
+                            error "List field '${FIELD_NAME[$i]}' option $found_options missing value"
+                        fi
+
+
+                        option_key="${OPTION_VALUE[$o]}"
+
+                        # Bash associative arrays cannot use empty keys
+                        if [[ -n "$option_key" ]]; then
+
+                            if [[ -n "${seen_values[$option_key]+exists}" ]]; then
+                                error "List field '${FIELD_NAME[$i]}' has duplicate option value '$option_key'"
+                            fi
+
+                            seen_values[$option_key]=1
+
+                        fi
+
+                    fi
+
+                done
+
+
+                if [[ $found_options -eq 0 ]]; then
+                    error "List field '${FIELD_NAME[$i]}' has no options"
+                fi
+
+                ;;
+
+
+            "")
+
+                error "Field ${FIELD_NAME[$i]} missing type"
+                ;;
+
+
+            *)
+
+                error "Field ${FIELD_NAME[$i]} has invalid type '${FIELD_TYPE[$i]}'"
+
+                ;;
+
+        esac
+
+    done
+
+
+
+    if [[ $FILE_ERRORS -eq 0 ]]; then
+        success "OK"
+    fi
+
+}
+
+
+
+#
+# Main
+#
+
+shopt -s nullglob
+
+files=("$SCRIPT_DIR"/*.pht)
+
+
+if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No .pht files found"
+    exit 1
+fi
+
+
+for pht in "${files[@]}"; do
+    check_pht "$pht"
+done
+
+
+echo
+
+
+if [[ $ERRORS -gt 0 ]]; then
+
+    echo "$ERRORS error(s) found"
+    exit 1
+
+else
+
+    echo "All .pht files are valid"
+    exit 0
+
+fi

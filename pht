@@ -2,30 +2,514 @@
 # Lists installed Proxmox Helper Toolkit scripts and descriptions
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-TRACK_FILE="$SCRIPT_DIR/.pht_scripts"
 
-# Functions
-error_exit() {
-    echo "Error: $1" >&2
-    exit 1
-}
+# Source bash-tui-toolkit
+if ! [[ -f $SCRIPT_DIR/.bash-tui-toolkit.bash ]]; then
+    if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$SCRIPT_DIR/.bash-tui-toolkit.bash"; then
+        echo "Failed downloading bash-tui-toolkit"
+        exit 1
+    fi
+fi
+source "$SCRIPT_DIR/.bash-tui-toolkit.bash"
 
-# Checks
 if [[ ! -f "$TRACK_FILE" ]]; then
-    error_exit "Install Proxmox Helper Toolkit using pht-updater before running this script"
+    echo "Install Proxmox Helper Toolkit using pht-updater before running this script"
 fi
 
-# List scripts
-while IFS= read -r SCRIPT; do
-    [[ -z "$SCRIPT" ]] && continue
+# -------------------------
+# Global storage
+# -------------------------
 
-    FILE="$SCRIPT_DIR/$SCRIPT"
+declare -A META
+declare -a ACTIONS
+declare -A ACTION_DATA
+declare -A FIELD_DATA
+declare -A OPTION_DATA
+declare -A FLAG_DATA
 
-    if [[ -f "$FILE" ]]; then
-        DESCRIPTION=$(sed -n '2p' "$FILE")
 
-        echo "$(tput setaf 3)$SCRIPT$(tput sgr0)"
-        echo "  ${DESCRIPTION:-No description}"
-        echo
+# -------------------------
+# Helpers
+# -------------------------
+
+trim() {
+    echo "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+
+clean_value() {
+    local value="$1"
+
+    value="$(trim "$value")"
+    value="${value#\"}"
+    value="${value%\"}"
+
+    echo "$value"
+}
+
+
+_metadata() {
+    META=()
+    ACTIONS=()
+
+    ACTION_DATA=()
+    FIELD_DATA=()
+    OPTION_DATA=()
+    FLAG_DATA=()
+}
+
+
+# -------------------------
+# .pht parser
+# -------------------------
+
+parse_pht() {
+
+    _metadata
+
+    local file="$1"
+
+    local section=""
+    local action=-1
+    local field=-1
+    local option=-1
+    local flag=-1
+
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+
+        # Remove comments
+        line="${line%%#*}"
+
+        line="$(trim "$line")"
+
+        [[ -z "$line" ]] && continue
+
+
+        case "$line" in
+
+            "[action]")
+                section="action"
+
+                ((action++))
+                ACTIONS+=("$action")
+
+                field=-1
+                flag=-1
+                ;;
+
+
+            "[/action]")
+                section=""
+                ;;
+
+
+            "[field]")
+                section="field"
+
+                ((field++))
+                option=-1
+                ;;
+
+
+            "[/field]")
+                section="action"
+                ;;
+
+
+            "[option]")
+                section="option"
+
+                ((option++))
+                ;;
+
+
+            "[/option]")
+                section="field"
+                ;;
+
+
+            "[flag]")
+                section="flag"
+
+                ((flag++))
+                ;;
+
+
+            "[/flag]")
+                section="action"
+                ;;
+
+
+            "[confirm]")
+                section="confirm"
+                ;;
+
+
+            "[/confirm]")
+                section="action"
+                ;;
+
+
+            *)
+                key="${line%%=*}"
+                value="${line#*=}"
+
+                key="$(trim "$key")"
+                value="$(clean_value "$value")"
+
+
+                case "$section" in
+
+                    "")
+                        META["$key"]="$value"
+                        ;;
+
+
+                    action)
+                        ACTION_DATA["$action:$key"]="$value"
+                        ;;
+
+
+                    field)
+                        FIELD_DATA["$action:$field:$key"]="$value"
+                        ;;
+
+
+                    option)
+                        OPTION_DATA["$action:$field:$option:$key"]="$value"
+                        ;;
+
+
+                    flag)
+                        FLAG_DATA["$action:$flag:$key"]="$value"
+                        ;;
+
+
+                    confirm)
+                        ACTION_DATA["$action:confirm:$key"]="$value"
+                        ;;
+
+                esac
+                ;;
+
+        esac
+
+    done < "$file"
+}
+
+
+# -------------------------
+# Load scripts
+# -------------------------
+
+load_scripts() {
+
+    scripts=()
+
+
+    for pht in "$SCRIPT_DIR"/*.pht; do
+
+        [[ -f "$pht" ]] || continue
+
+
+        script="$(basename "$pht" .pht)"
+
+
+        # Require matching script
+        [[ -f "$SCRIPT_DIR/$script" ]] || continue
+
+
+        parse_pht "$pht"
+
+
+        # Skip hidden scripts
+        [[ "${META[hidden]}" == "true" ]] && continue
+
+
+        scripts+=("$script")
+
+    done
+}
+
+
+# -------------------------
+# Select script
+# -------------------------
+
+select_script() {
+
+    local entries=()
+
+    for script in "${scripts[@]}"; do
+
+        parse_pht "$SCRIPT_DIR/$script.pht"
+
+        title="${META[title]:-$script}"
+        description="${META[description]}"
+
+        if [[ -n "$description" ]]; then
+            entries+=("$title -- $description")
+        else
+            entries+=("$title")
+        fi
+
+    done
+
+    selected=$(list "Select script" "${entries[@]}")
+
+    echo "${scripts[$selected]}"
+
+
+}
+
+
+# -------------------------
+# Select action
+# -------------------------
+
+select_action() {
+
+    local visible=()
+    local indexes=()
+
+
+    for action in "${ACTIONS[@]}"; do
+
+        hidden="${ACTION_DATA[$action:hidden]}"
+
+        [[ "$hidden" == "true" ]] && continue
+
+
+        visible+=("${ACTION_DATA[$action:name]}")
+        indexes+=("$action")
+
+    done
+
+
+    [[ ${#visible[@]} -gt 0 ]] || return 1
+
+
+    for action in "${indexes[@]}"; do
+
+        if [[ "${ACTION_DATA[$action:default]}" == "true" ]]; then
+            echo "$action"
+            return
+        fi
+
+    done
+
+
+    selected=$(list "${META[title]}" "${visible[@]}")
+
+
+
+    echo "${indexes[$selected]}"
+}
+
+
+# -------------------------
+# Collect flags
+# -------------------------
+
+collect_flags() {
+
+    FLAGS=()
+
+
+    local action="$1"
+
+
+    for ((i=0; ; i++)); do
+
+        label="${FLAG_DATA[$action:$i:label]}"
+
+        [[ -z "$label" ]] && break
+
+
+        argument="${FLAG_DATA[$action:$i:argument]}"
+
+
+        answer=$(confirm "$label")
+
+
+
+        if [[ "$answer" == "1" ]]; then
+            FLAGS+=("$argument")
+        fi
+
+    done
+}
+
+
+# -------------------------
+# Collect fields
+# -------------------------
+
+collect_fields() {
+
+    VALUES=()
+
+
+    local action="$1"
+
+
+    for ((field=0; ; field++)); do
+
+        name="${FIELD_DATA[$action:$field:name]}"
+
+        [[ -z "$name" ]] && break
+
+
+        label="${FIELD_DATA[$action:$field:label]}"
+        type="${FIELD_DATA[$action:$field:type]}"
+
+
+        case "$type" in
+
+
+            input|path|ipv4|number)
+
+                value=$(input "$label")
+                ;;
+
+
+            password)
+
+                value=$(password "$label")
+                ;;
+
+
+            list)
+
+                options=()
+                values=()
+
+
+                for ((option=0; ; option++)); do
+
+                    option_label="${OPTION_DATA[$action:$field:$option:label]}"
+
+                    [[ -z "${OPTION_DATA[$action:$field:$option:label]+exists}" ]] && break
+
+
+                    options+=("$option_label")
+                    values+=("${OPTION_DATA[$action:$field:$option:value]}")
+
+                done
+
+
+                selected=$(list "$label" "${options[@]}")
+
+
+
+                value="${values[$selected]}"
+
+                ;;
+
+
+            *)
+
+                value=$(input "$label")
+
+                ;;
+
+        esac
+
+
+        VALUES+=("$value")
+
+    done
+}
+
+
+# -------------------------
+# Execute
+# -------------------------
+
+run_action() {
+
+    local script="$1"
+    local action="$2"
+
+
+    collect_flags "$action"
+
+    collect_fields "$action"
+
+
+    confirm_message="${ACTION_DATA[$action:confirm:message]}"
+
+
+    if [[ -n "$confirm_message" ]]; then
+
+        answer=$(confirm "$confirm_message")
+
+        clear
+        [[ "$answer" == "1" ]] || return
+
     fi
-done < "$TRACK_FILE"
+
+
+    args=(
+        "${FLAGS[@]}"
+    )
+
+
+    action_command="${ACTION_DATA[$action:command]}"
+
+    [[ -n "$action_command" ]] && args+=("$action_command")
+
+
+    args+=(
+        "${VALUES[@]}"
+    )
+
+
+    show_success "Running $script"
+
+
+    "$SCRIPT_DIR/$script" "${args[@]}"
+
+    exit_code=$?
+
+
+    if [[ $exit_code -ne 0 ]]; then
+        show_error "$script failed with exit code $exit_code"
+    else
+        show_success "$script completed successfully"
+    fi
+
+
+    read -rp "Press enter to continue..."
+
+    clear
+}
+
+
+# -------------------------
+# Main
+# -------------------------
+
+clear
+
+while true; do
+    echo "Loading..."
+
+    load_scripts && clear
+
+    [[ ${#scripts[@]} -gt 0 ]] || {
+        show_error "No scripts found"
+        exit 1
+    }
+
+    script=$(select_script) && clear
+
+    parse_pht "$SCRIPT_DIR/$script.pht"
+
+
+    action=$(select_action) && clear
+
+    run_action "$script" "$action"
+
+done
