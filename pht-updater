@@ -5,6 +5,10 @@ TARGET_DIR="/usr/local/bin"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
 REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
+
+NO_CACHE="$(date +%s)"
+declare -A file_status
+declare -A scripts_to_track
 shopt -s dotglob # Allow dotfiles to be included in wildcard
 
 echo "Updating Proxmox Helper Toolkit scripts..."
@@ -17,10 +21,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 touch "$TRACK_FILE"
 
 # Get list of files in the repo root
-files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
-
-declare -A file_status
-declare -A scripts_to_track
+files=$(curl -fsSL "https://api.github.com/repos/$REPO/contents?ref=$BRANCH&nc=$NO_CACHE" | grep -oP '"name":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip non-script files
@@ -31,7 +32,7 @@ for file in $files; do
     esac
 
     echo "Downloading $file..."
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?cb=$(date +%s)" -o "$TEMP_DIR/$file"
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$NO_CACHE" -o "$TEMP_DIR/$file"
     chmod +x "$TEMP_DIR/$file"
 
     case "$file" in
