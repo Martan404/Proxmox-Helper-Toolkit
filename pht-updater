@@ -20,13 +20,13 @@ files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$R
 
 updated_scripts=()
 new_scripts=()
-files_to_keep=()
+scripts_to_keep=()
 removed_scripts=()
 
 for file in $files; do
     # Skip non-script files
     case "$file" in
-        LICENSE|.gitignore|README.md)
+        LICENSE|.gitignore|README.md|.bash-tui-toolkit.bash)
             continue
             ;;
     esac
@@ -36,7 +36,7 @@ for file in $files; do
     chmod +x "$TEMP_DIR/$file"
 
     if [[ "$file" != *.pht ]]; then
-        files_to_keep+=("$file") # Track downloaded scripts
+        scripts_to_keep+=("$file") # Track downloaded scripts
     fi
 
     # Check if the file already exists and is different
@@ -61,7 +61,8 @@ mapfile -t tracked_scripts < "$TRACK_FILE"
 
 # Check for old scripts and remove them
 for old_file in "${tracked_scripts[@]}"; do
-    if [[ ! " ${files_to_keep[*]} " == *"$old_file"* ]]; then
+
+    if [[ ! " ${scripts_to_keep[*]} " == *"$old_file"* ]]; then
         if [ -f "$TARGET_DIR/$old_file" ]; then
             removed_scripts+=("$old_file")
 
@@ -72,7 +73,7 @@ for old_file in "${tracked_scripts[@]}"; do
 done
 
 # Update tracking file
-printf "%s\n" "${files_to_keep[@]}" > "$TRACK_FILE"
+printf "%s\n" "${scripts_to_keep[@]}" > "$TRACK_FILE"
 
 # Report removed scripts
 if [ "${#removed_scripts[@]}" -gt 0 ]; then
