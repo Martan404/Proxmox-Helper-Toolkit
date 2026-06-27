@@ -4,29 +4,32 @@
 TARGET_DIR="/usr/local/bin"
 PHT_DIR="$TARGET_DIR/pht-files"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
+
 REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
 
+declare -A repo_files
 declare -A file_status
 declare -A scripts_to_track
-shopt -s dotglob # Allow dotfiles to be included in wildcard
 
 echo "Updating Proxmox Helper Toolkit scripts..."
 
-# Create a temporary directory and delete on exit
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Ensure tracking file exists
+mkdir -p "$PHT_DIR"
+
 touch "$TRACK_FILE"
 
-# Get list of files in the repo root
-files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -B2 '"type": "blob"' | grep -oP '"path":\s*"\K[^"]+')
+# Get repository files
+files=$(curl -fsSL \
+    "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" |
+    grep -oP '"path":\s*"\K[^"]+')
 
 for file in $files; do
-    # Skip non-script files
+
     case "$file" in
-        LICENSE|.gitignore|README.md)
+        LICENSE|README.md|.gitignore)
             continue
             ;;
     esac
@@ -34,113 +37,168 @@ for file in $files; do
     echo "Downloading $file..."
 
     mkdir -p "$TEMP_DIR/$(dirname "$file")"
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" -o "$TEMP_DIR/$file"
 
-    case "$file" in
-        *.pht|*.bash)
-            ;;
-        *)
-            chmod +x "$TEMP_DIR/$file"
-            ;;
-    esac
+    curl -fsSL \
+        "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" \
+        -o "$TEMP_DIR/$file"
 
-    case "$file" in
-        */*) # Skip folders
-            ;;
-        *) # Track downloaded root scripts
-            scripts_to_track["$file"]=1 # Track downloaded root scripts
-            ;;
-    esac
+    repo_files["$file"]=1
 
-    # Set file status
+    # Track only root executables
+    if [[ "$file" != */* ]]; then
+
+        case "$file" in
+            *.pht|*.bash)
+                ;;
+            *)
+                chmod +x "$TEMP_DIR/$file"
+                scripts_to_track["$file"]=1
+                ;;
+        esac
+
+    fi
+
+    # Check status
     if [[ -f "$TARGET_DIR/$file" ]]; then
+
         if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
             file_status["$file"]="updated"
-
-        else
-            file_status["$file"]="same"
         fi
 
     else
+
         file_status["$file"]="new"
+
     fi
+
 done
 
-# Move files from temp directory to target
-echo "Moving downloaded files to $TARGET_DIR"
+# Build list of locally installed files we own
+declare -A installed_files
 
-cp -rf "$TEMP_DIR/"* "$TARGET_DIR/"
+# Root scripts
+while IFS= read -r script; do
 
-# Read currently tracked scripts
-mapfile -t tracked_scripts < "$TRACK_FILE"
+    [[ -n "$script" ]] &&
+        installed_files["$script"]=1
 
-# Check for old scripts and remove them, also remove .pht if available
-for removed_script in "${tracked_scripts[@]}"; do
+done < "$TRACK_FILE"
 
-    if [[ -z "${scripts_to_track[$removed_script]}" ]]; then
-        if [ -f "$TARGET_DIR/$removed_script" ]; then
+# pht-files contents
+if [[ -d "$PHT_DIR" ]]; then
 
-            file_status["$removed_script"]="removed"
+    while IFS= read -r file; do
 
-            rm -f "$TARGET_DIR/$removed_script"
-            rm -f "$PHT_DIR/$removed_script.pht"
-        fi
+        relative="pht-files/$(basename "$file")"
+
+        installed_files["$relative"]=1
+
+    done < <(find "$PHT_DIR" -maxdepth 1 -type f)
+
+fi
+
+# Find removed files
+for old_file in "${!installed_files[@]}"; do
+
+    if [[ -z "${repo_files[$old_file]}" ]]; then
+
+        file_status["$old_file"]="removed"
+
+        rm -f "$TARGET_DIR/$old_file"
+
     fi
+
 done
 
-# Update tracking file
+# Install/update files
+echo "Installing files..."
+
+cp -a "$TEMP_DIR/." "$TARGET_DIR/"
+
+# Update root script tracker
 printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
 
-# Prepare file report
+# Build reports
 new_files=()
 updated_files=()
 removed_files=()
 
 for file in "${!file_status[@]}"; do
+
     case "${file_status[$file]}" in
+
         new)
             new_files+=("$file")
             ;;
+
         updated)
             updated_files+=("$file")
             ;;
+
         removed)
             removed_files+=("$file")
             ;;
+
     esac
+
 done
 
 # Sort reports
-[[ ${#new_files[@]} -gt 0 ]] && mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
-[[ ${#updated_files[@]} -gt 0 ]] && mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
-[[ ${#removed_files[@]} -gt 0 ]] && mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
-
-# Report removed files
-if [ "${#removed_files[@]}" -gt 0 ]; then
-    echo "The following files got removed:"
-    for script in "${removed_files[@]}"; do
-        echo "  - $script"
-    done
+if [[ ${#new_files[@]} -gt 0 ]]; then
+    mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
 fi
 
-# Report new files
-if [ "${#new_files[@]}" -gt 0 ]; then
+if [[ ${#updated_files[@]} -gt 0 ]]; then
+    mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
+fi
+
+if [[ ${#removed_files[@]} -gt 0 ]]; then
+    mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
+fi
+
+# Report removed
+if [[ ${#removed_files[@]} -gt 0 ]]; then
+
+    echo
+    echo "The following files were removed:"
+
+    for file in "${removed_files[@]}"; do
+        echo "  - $file"
+    done
+
+fi
+
+# Report new
+if [[ ${#new_files[@]} -gt 0 ]]; then
+
+    echo
     echo "The following files were newly installed:"
-    for script in "${new_files[@]}"; do
-        echo "  - $script"
+
+    for file in "${new_files[@]}"; do
+        echo "  - $file"
     done
+
 fi
 
-# Report updated files
-if [ "${#updated_files[@]}" -gt 0 ]; then
+# Report updated
+if [[ ${#updated_files[@]} -gt 0 ]]; then
+
+    echo
     echo "The following files were updated:"
-    for script in "${updated_files[@]}"; do
-        echo "  - $script"
+
+    for file in "${updated_files[@]}"; do
+        echo "  - $file"
     done
+
 fi
 
-if [[ ${#new_files[@]} -eq 0 && ${#updated_files[@]} -eq 0 && ${#removed_files[@]} -eq 0 ]]; then
+if [[ ${#new_files[@]} -eq 0 &&
+      ${#updated_files[@]} -eq 0 &&
+      ${#removed_files[@]} -eq 0 ]]; then
+
     echo "All files are already up-to-date"
+
 fi
 
-exit 0
+echo
+echo "Done! All files are updated"
