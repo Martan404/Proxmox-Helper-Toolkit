@@ -19,10 +19,10 @@ touch "$TRACK_FILE"
 # Get list of files in the repo root
 files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
-updated_scripts=()
-new_scripts=()
+new_files=()
+updated_files=()
+removed_files=()
 scripts_to_keep=()
-removed_scripts=()
 
 for file in $files; do
     # Skip non-script files
@@ -47,11 +47,11 @@ for file in $files; do
     # Check if the file already exists and is different
     if [ -f "$TARGET_DIR/$file" ]; then
         if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
-            updated_scripts+=("$file")
+            updated_files+=("$file")
         fi
     else
         # New file
-        new_scripts+=("$file")
+        new_files+=("$file")
     fi
 done
 
@@ -71,7 +71,7 @@ for old_file in "${tracked_scripts[@]}"; do
     if [[ ! " ${scripts_to_keep[*]} " == *"$old_file"* ]]; then
         if [ -f "$TARGET_DIR/$old_file" ]; then
 
-            removed_scripts+=("$old_file")
+            removed_files+=("$old_file")
             rm -f "$TARGET_DIR/$old_file"
             rm -f "$TARGET_DIR/$old_file.pht"
         fi
@@ -82,25 +82,25 @@ done
 printf "%s\n" "${scripts_to_keep[@]}" > "$TRACK_FILE"
 
 # Report removed files
-if [ "${#removed_scripts[@]}" -gt 0 ]; then
+if [ "${#removed_files[@]}" -gt 0 ]; then
     echo "The following files got removed:"
-    for script in "${removed_scripts[@]}"; do
+    for script in "${removed_files[@]}"; do
         echo "  - $script"
     done
 fi
 
 # Report new files
-if [ "${#new_scripts[@]}" -gt 0 ]; then
+if [ "${#new_files[@]}" -gt 0 ]; then
     echo "The following files were newly installed:"
-    for script in "${new_scripts[@]}"; do
+    for script in "${new_files[@]}"; do
         echo "  - $script"
     done
 fi
 
 # Report updated files
-if [ "${#updated_scripts[@]}" -gt 0 ]; then
+if [ "${#updated_files[@]}" -gt 0 ]; then
     echo "The following files were updated:"
-    for script in "${updated_scripts[@]}"; do
+    for script in "${updated_files[@]}"; do
         echo "  - $script"
     done
 else
