@@ -105,9 +105,9 @@ for file in "${!file_status[@]}"; do
 done
 
 # Sort reports
-mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
-mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
-mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
+[[ ${#new_files[@]} -gt 0 ]] && mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
+[[ ${#updated_files[@]} -gt 0 ]] && mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
+[[ ${#removed_files[@]} -gt 0 ]] && mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
 
 # Report removed files
 if [ "${#removed_files[@]}" -gt 0 ]; then
@@ -133,6 +133,6 @@ if [ "${#updated_files[@]}" -gt 0 ]; then
     done
 fi
 
-if [[ ${#removed_files[@]} -eq 0 && ${#new_files[@]} -eq 0 && ${#updated_files[@]} -eq 0 ]]; then
+if [[ ${#new_files[@]} -eq 0 && ${#updated_files[@]} -eq 0 && ${#removed_files[@]} -eq 0 ]]; then
     echo "All files are already up-to-date"
 fi
