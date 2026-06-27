@@ -3,6 +3,7 @@
 
 # shellcheck disable=SC2207
 
+SCRIPT_NAME="$(basename "$0")"
 PARALLEL=false
 
 # Parse optional flag
@@ -12,7 +13,7 @@ if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
 fi
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 [--parallel|-p] <command>"
+    echo "Usage: $SCRIPT_NAME [--parallel|-p] <command>"
     exit 1
 fi
 

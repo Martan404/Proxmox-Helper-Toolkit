@@ -1,6 +1,7 @@
 #!/bin/bash
 # Adds <mount-point> to a LXC container
 
+SCRIPT_NAME="$(basename "$0")"
 CTID="${1:-}"
 MOUNTPOINT="${2:-}"
 MOUNTPOINT_LOCAL="${3:-}"
@@ -19,7 +20,7 @@ error_exit() {
 
 # Checks
 if [[ -z "$CTID" ]]; then
-    error_exit "Usage: $0 <container-id> <mount-point> <local-mount-point>"
+    error_exit "Usage: $SCRIPT_NAME <container-id> <mount-point> <local-mount-point>"
 fi
 
 if ! pct status "$CTID" &>/dev/null; then
