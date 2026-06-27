@@ -35,7 +35,14 @@ for file in $files; do
 
     mkdir -p "$TEMP_DIR/$(dirname "$file")"
     curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" -o "$TEMP_DIR/$file"
-    chmod +x "$TEMP_DIR/$file"
+
+    case "$file" in
+        *.pht|*.bash)
+            ;;
+        *)
+            chmod +x "$TEMP_DIR/$file"
+            ;;
+    esac
 
     case "$file" in
         */*) # Skip folders
