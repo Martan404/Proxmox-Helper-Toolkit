@@ -56,9 +56,14 @@ done
 
 # Move files from temp directory to target
 echo "Moving downloaded files to $TARGET_DIR"
+
+shopt -s dotglob # Allow dotfiles to be included
+
 for file in "$TEMP_DIR"/*; do
     mv -f "$file" "$TARGET_DIR/"
 done
+
+shopt -u dotglob
 
 # Read currently tracked scripts
 mapfile -t tracked_scripts < "$TRACK_FILE"
