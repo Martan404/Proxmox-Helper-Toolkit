@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Install and update Proxmox Helper Toolkit
-#v1
-
+#v0001
 TARGET_DIR="/usr/local/bin"
 PHT_DIR="$TARGET_DIR/pht-files"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
@@ -10,6 +9,7 @@ REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
 
 declare -A repo_files
+declare -A local_files
 declare -A file_status
 declare -A scripts_to_track
 
@@ -18,116 +18,173 @@ echo "Updating Proxmox Helper Toolkit scripts..."
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
+mkdir -p "$TARGET_DIR"
 mkdir -p "$PHT_DIR"
 
 touch "$TRACK_FILE"
 
-# Get repository files
-files=$(curl -fsSL "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -oP '"path":\s*"\K[^"]+' | grep -v '/$')
+#
+# Download repository
+#
 
-for file in $files; do
+echo "Downloading repository..."
 
-    case "$file" in
-        LICENSE|README.md|.gitignore)
-            continue
-            ;;
-    esac
+curl -fsSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TEMP_DIR/repo.tar.gz"
 
-    echo "Downloading $file..."
+mkdir "$TEMP_DIR/repo"
 
-    mkdir -p "$TEMP_DIR/$(dirname "$file")"
+tar -xzf "$TEMP_DIR/repo.tar.gz" --strip-components=1 -C "$TEMP_DIR/repo"
 
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" -o "$TEMP_DIR/$file"
+#
+# Remove unwanted repo files
+#
 
-    repo_files["$file"]=1
+rm -f "$TEMP_DIR/repo/LICENSE" "$TEMP_DIR/repo/README.md" "$TEMP_DIR/repo/.gitignore"
 
-    # Track only root executables
-    if [[ "$file" != */* ]]; then
+#
+# Read repository files and compare
+#
 
-        case "$file" in
+while IFS= read -r -d '' file; do
+
+    relative="${file#"$TEMP_DIR/repo/"}"
+
+    repo_files["$relative"]=1
+
+    # Make root scripts executable and track them
+
+    if [[ "$relative" != */* ]]; then
+
+        case "$relative" in
             *.pht|*.bash)
                 ;;
             *)
-                chmod +x "$TEMP_DIR/$file"
-                scripts_to_track["$file"]=1
+                chmod +x "$file"
+                scripts_to_track["$relative"]=1
                 ;;
         esac
 
     fi
 
-    # Check status
-    if [[ -f "$TARGET_DIR/$file" ]]; then
+    # Compare existing file
 
-        if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
-            file_status["$file"]="updated"
+    if [[ -f "$TARGET_DIR/$relative" ]]; then
+
+        if ! cmp -s "$file" "$TARGET_DIR/$relative"; then
+            file_status["$relative"]="updated"
         fi
 
     else
 
-        file_status["$file"]="new"
+        file_status["$relative"]="new"
 
     fi
 
-done
+done < <(find "$TEMP_DIR/repo" -type f -print0)
 
-# Build list of locally installed files we own
-declare -A installed_files
+#
+# Build list of installed toolkit files
+#
 
 # Root scripts
+
 while IFS= read -r script; do
 
     [[ -n "$script" ]] &&
-        installed_files["$script"]=1
+        local_files["$script"]=1
 
 done < "$TRACK_FILE"
 
-# pht-files contents
+# pht-files directory
+
 if [[ -d "$PHT_DIR" ]]; then
 
-    while IFS= read -r file; do
+    while IFS= read -r -d '' file; do
 
-        installed_files["pht-files/${file##*/}"]=1
+        relative="${file#"$TARGET_DIR/"}"
+        local_files["$relative"]=1
 
-    done < <(find "$PHT_DIR" -maxdepth 1 -type f)
+    done < <(find "$PHT_DIR" -type f -print0)
 
 fi
 
-# Find removed files
-for old_file in "${!installed_files[@]}"; do
+#
+# Remove files no longer in repository
+#
+
+for old_file in "${!local_files[@]}"; do
 
     if [[ -z "${repo_files[$old_file]}" ]]; then
 
-        # Ignore directories
-        [[ -d "$TARGET_DIR/$old_file" ]] && continue
+        if [[ -f "$TARGET_DIR/$old_file" ]]; then
 
-        file_status["$old_file"]="removed"
+            echo "Removing $old_file"
 
-        rm -f "$TARGET_DIR/$old_file"
+            file_status["$old_file"]="removed"
+
+            rm -f "$TARGET_DIR/$old_file"
+
+        fi
 
     fi
 
 done
 
-# Install/update files
+#
+# Install files
+#
+
 echo "Installing files..."
+
 
 while IFS= read -r -d '' file; do
 
-    relative="${file#"$TEMP_DIR/"}"
+    relative="${file#"$TEMP_DIR/repo/"}"
 
     mkdir -p "$TARGET_DIR/$(dirname "$relative")"
 
-    mv -f "$file" "$TARGET_DIR/$relative"
+    #
+    # Special handling for updater:
+    # copy last so the running updater survives
+    #
 
-done < <(find "$TEMP_DIR" -type f -print0)
+    if [[ "$relative" == "pht-updater" ]]; then
+        continue
+    fi
 
-# Update root script tracker
+
+    cp -f "$file" "$TARGET_DIR/$relative"
+
+done < <(find "$TEMP_DIR/repo" -type f -print0)
+
+#
+# Update tracker
+#
+
 printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
 
+#
+# Replace updater last
+#
+
+if [[ -f "$TEMP_DIR/repo/pht-updater" ]]; then
+
+    cp -f \
+        "$TEMP_DIR/repo/pht-updater" \
+        "$TARGET_DIR/pht-updater"
+
+    chmod +x "$TARGET_DIR/pht-updater"
+
+fi
+
+#
 # Build reports
+#
+
 new_files=()
 updated_files=()
 removed_files=()
+
 
 for file in "${!file_status[@]}"; do
 
@@ -149,20 +206,25 @@ for file in "${!file_status[@]}"; do
 
 done
 
+#
 # Sort reports
-if [[ ${#new_files[@]} -gt 0 ]]; then
-    mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
-fi
+#
 
-if [[ ${#updated_files[@]} -gt 0 ]]; then
-    mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
-fi
+[[ ${#new_files[@]} -gt 0 ]] &&
+mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
 
-if [[ ${#removed_files[@]} -gt 0 ]]; then
-    mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
-fi
 
-# Report removed
+[[ ${#updated_files[@]} -gt 0 ]] &&
+mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
+
+
+[[ ${#removed_files[@]} -gt 0 ]] &&
+mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
+
+#
+# Report
+#
+
 if [[ ${#removed_files[@]} -gt 0 ]]; then
 
     echo
@@ -174,7 +236,7 @@ if [[ ${#removed_files[@]} -gt 0 ]]; then
 
 fi
 
-# Report new
+
 if [[ ${#new_files[@]} -gt 0 ]]; then
 
     echo
@@ -186,7 +248,7 @@ if [[ ${#new_files[@]} -gt 0 ]]; then
 
 fi
 
-# Report updated
+
 if [[ ${#updated_files[@]} -gt 0 ]]; then
 
     echo
