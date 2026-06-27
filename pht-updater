@@ -5,10 +5,11 @@ TARGET_DIR="/usr/local/bin"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
 REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
+shopt -s dotglob # Allow dotfiles to be included in wildcard
 
 echo "Updating Proxmox Helper Toolkit scripts..."
 
-# Create a temporary directory
+# Create a temporary directory and delete on exit
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
@@ -57,24 +58,20 @@ done
 # Move files from temp directory to target
 echo "Moving downloaded files to $TARGET_DIR"
 
-shopt -s dotglob # Allow dotfiles to be included
-
 for file in "$TEMP_DIR"/*; do
     mv -f "$file" "$TARGET_DIR/"
 done
 
-shopt -u dotglob
-
 # Read currently tracked scripts
 mapfile -t tracked_scripts < "$TRACK_FILE"
 
-# Check for old scripts and remove them
+# Check for old scripts and remove them, also remove .pht if available
 for old_file in "${tracked_scripts[@]}"; do
 
     if [[ ! " ${scripts_to_keep[*]} " == *"$old_file"* ]]; then
         if [ -f "$TARGET_DIR/$old_file" ]; then
-            removed_scripts+=("$old_file")
 
+            removed_scripts+=("$old_file")
             rm -f "$TARGET_DIR/$old_file"
             rm -f "$TARGET_DIR/$old_file.pht"
         fi
@@ -84,30 +81,30 @@ done
 # Update tracking file
 printf "%s\n" "${scripts_to_keep[@]}" > "$TRACK_FILE"
 
-# Report removed scripts
+# Report removed files
 if [ "${#removed_scripts[@]}" -gt 0 ]; then
-    echo "The following scripts got removed:"
+    echo "The following files got removed:"
     for script in "${removed_scripts[@]}"; do
         echo "  - $script"
     done
 fi
 
-# Report new scripts
+# Report new files
 if [ "${#new_scripts[@]}" -gt 0 ]; then
-    echo "The following scripts were newly installed:"
+    echo "The following files were newly installed:"
     for script in "${new_scripts[@]}"; do
         echo "  - $script"
     done
 fi
 
-# Report updated scripts
+# Report updated files
 if [ "${#updated_scripts[@]}" -gt 0 ]; then
-    echo "The following scripts were updated:"
+    echo "The following files were updated:"
     for script in "${updated_scripts[@]}"; do
         echo "  - $script"
     done
 else
-    echo "All scripts are already up-to-date."
+    echo "All files are already up-to-date"
 fi
 
-echo "Done! All scripts are updated"
+echo "Done! All files are updated"
