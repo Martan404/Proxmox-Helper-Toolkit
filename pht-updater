@@ -43,19 +43,17 @@ for file in $files; do
             ;;
     esac
 
-    # Check file status
+    # Set file status
     if [[ -f "$TARGET_DIR/$file" ]]; then
-
         if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
             file_status["$file"]="updated"
+
         else
             file_status["$file"]="same"
         fi
 
     else
-
         file_status["$file"]="new"
-
     fi
 done
 
