@@ -22,9 +22,7 @@ mkdir -p "$PHT_DIR"
 touch "$TRACK_FILE"
 
 # Get repository files
-files=$(curl -fsSL \
-    "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" |
-    grep -oP '"path":\s*"\K[^"]+')
+files=$(curl -fsSL "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -B2 '"type": "blob"' | grep -oP '"path":\s*"\K[^"]+')
 
 for file in $files; do
 
@@ -38,9 +36,7 @@ for file in $files; do
 
     mkdir -p "$TEMP_DIR/$(dirname "$file")"
 
-    curl -fsSL \
-        "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" \
-        -o "$TEMP_DIR/$file"
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" -o "$TEMP_DIR/$file"
 
     repo_files["$file"]=1
 
