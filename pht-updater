@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install and update Proxmox Helper Toolkit
-#v0001
+#v0002
 TARGET_DIR="/usr/local/bin"
 PHT_DIR="$TARGET_DIR/pht-files"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
