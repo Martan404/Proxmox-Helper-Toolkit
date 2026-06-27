@@ -19,9 +19,7 @@ touch "$TRACK_FILE"
 # Get list of files in the repo root
 files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH" | grep -oP '"name":\s*"\K[^"]+')
 
-new_files=()
-updated_files=()
-removed_files=()
+declare -A file_status
 declare -A scripts_to_track
 
 for file in $files; do
@@ -44,14 +42,19 @@ for file in $files; do
             ;;
     esac
 
-    # Check if the file already exists and is different
-    if [ -f "$TARGET_DIR/$file" ]; then
+    # Check file status
+    if [[ -f "$TARGET_DIR/$file" ]]; then
+
         if ! cmp -s "$TEMP_DIR/$file" "$TARGET_DIR/$file"; then
-            updated_files+=("$file")
+            file_status["$file"]="updated"
+        else
+            file_status["$file"]="same"
         fi
+
     else
-        # New file
-        new_files+=("$file")
+
+        file_status["$file"]="new"
+
     fi
 done
 
@@ -66,20 +69,45 @@ done
 mapfile -t tracked_scripts < "$TRACK_FILE"
 
 # Check for old scripts and remove them, also remove .pht if available
-for old_file in "${tracked_scripts[@]}"; do
+for removed_script in "${tracked_scripts[@]}"; do
 
-    if [[ -z "${scripts_to_track[$old_file]}" ]]; then
-        if [ -f "$TARGET_DIR/$old_file" ]; then
+    if [[ -z "${scripts_to_track[$removed_script]}" ]]; then
+        if [ -f "$TARGET_DIR/$removed_script" ]; then
 
-            removed_files+=("$old_file")
-            rm -f "$TARGET_DIR/$old_file"
-            rm -f "$TARGET_DIR/$old_file.pht"
+            file_status["$removed_script"]="removed"
+
+            rm -f "$TARGET_DIR/$removed_script"
+            rm -f "$TARGET_DIR/$removed_script.pht"
         fi
     fi
 done
 
 # Update tracking file
 printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
+
+# Prepare file report
+new_files=()
+updated_files=()
+removed_files=()
+
+for file in "${!file_status[@]}"; do
+    case "${file_status[$file]}" in
+        new)
+            new_files+=("$file")
+            ;;
+        updated)
+            updated_files+=("$file")
+            ;;
+        removed)
+            removed_files+=("$file")
+            ;;
+    esac
+done
+
+# Sort reports
+mapfile -t new_files < <(printf "%s\n" "${new_files[@]}" | sort)
+mapfile -t updated_files < <(printf "%s\n" "${updated_files[@]}" | sort)
+mapfile -t removed_files < <(printf "%s\n" "${removed_files[@]}" | sort)
 
 # Report removed files
 if [ "${#removed_files[@]}" -gt 0 ]; then
@@ -103,8 +131,8 @@ if [ "${#updated_files[@]}" -gt 0 ]; then
     for script in "${updated_files[@]}"; do
         echo "  - $script"
     done
-else
-    echo "All files are already up-to-date"
 fi
 
-echo "Done! All files are updated"
+if [[ ${#removed_files[@]} -eq 0 && ${#new_files[@]} -eq 0 && ${#updated_files[@]} -eq 0 ]]; then
+    echo "All files are already up-to-date"
+fi
