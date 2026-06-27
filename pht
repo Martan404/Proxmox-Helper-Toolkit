@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 # Interactive menu to use the Proxmox Helper Toolkit
 
+SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+PHT_DIR="$SCRIPT_DIR/pht-files"
 TRACK_FILE="$SCRIPT_DIR/.pht_scripts"
-
-# -------------------------
-# Source bash-tui-toolkit
-# -------------------------
-
-if ! [[ -f $SCRIPT_DIR/.bash-tui-toolkit.bash ]]; then
-    if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$SCRIPT_DIR/.bash-tui-toolkit.bash"; then
-        echo "Failed downloading bash-tui-toolkit"
-        exit 1
-    fi
-fi
-source "$SCRIPT_DIR/.bash-tui-toolkit.bash"
 
 # -------------------------
 # Check for install
@@ -26,46 +16,16 @@ if [[ ! -f "$TRACK_FILE" ]]; then
 fi
 
 # -------------------------
-# List scripts
+# Source bash-tui-toolkit
 # -------------------------
 
-list_scripts() {
-    [[ -f "$TRACK_FILE" ]] || {
-        show_error "Install Proxmox Helper Toolkit using pht-updater before running this script"
-        return 1
-    }
-
-    while IFS= read -r script; do
-
-        [[ -z "$script" ]] && continue
-
-        # Ignore metadata files
-        [[ "$script" == *.pht ]] && continue
-
-        [[ -f "$SCRIPT_DIR/$script" ]] || continue
-
-        if [[ -f "$SCRIPT_DIR/$script.pht" ]]; then
-
-            parse_pht "$SCRIPT_DIR/$script.pht"
-
-            printf "\e[33m%s\e[0m\n" "${META[title]:-$script}"
-
-            [[ -n "${META[description]}" ]] &&
-                printf "  %s\n" "${META[description]}"
-
-        else
-
-            description="$(sed -n '2{s/^# *//;p}' "$SCRIPT_DIR/$script")"
-
-            printf "\e[33m%s\e[0m\n" "$script"
-            printf "  %s\n" "${description:-No description}"
-
-        fi
-
-        echo
-
-    done < "$TRACK_FILE"
-}
+if ! [[ -f $SCRIPT_DIR/_bash-tui-toolkit.bash ]]; then
+    if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$SCRIPT_DIR/_bash-tui-toolkit.bash"; then
+        echo "Failed downloading bash-tui-toolkit"
+        exit 1
+    fi
+fi
+source "$PHT_DIR/_bash-tui-toolkit.bash"
 
 # -------------------------
 # Global storage
@@ -249,7 +209,6 @@ parse_pht() {
     done < "$file"
 }
 
-
 # -------------------------
 # Load scripts
 # -------------------------
@@ -258,31 +217,22 @@ load_scripts() {
 
     scripts=()
 
-
-    for pht in "$SCRIPT_DIR"/*.pht; do
+    for pht in "$PHT_DIR"/*.pht; do
 
         [[ -f "$pht" ]] || continue
 
-
         script="$(basename "$pht" .pht)"
-
-
-        # Require matching script
-        [[ -f "$SCRIPT_DIR/$script" ]] || continue
-
 
         parse_pht "$pht"
 
-
-        # Skip hidden scripts
+        # Skip hidden entries
         [[ "${META[hidden]}" == "true" ]] && continue
 
-
         scripts+=("$script")
-
     done
-}
 
+    mapfile -t scripts < <(printf "%s\n" "${scripts[@]}" | sort)
+}
 
 # -------------------------
 # Select script
@@ -294,7 +244,7 @@ select_script() {
 
     for script in "${scripts[@]}"; do
 
-        parse_pht "$SCRIPT_DIR/$script.pht"
+        parse_pht "$PHT_DIR/$script.pht"
 
         title="${META[title]:-$script}"
         description="${META[description]}"
@@ -311,9 +261,7 @@ select_script() {
 
     echo "${scripts[$selected]}"
 
-
 }
-
 
 # -------------------------
 # Select action
@@ -323,7 +271,6 @@ select_action() {
 
     local visible=()
     local indexes=()
-
 
     for action in "${ACTIONS[@]}"; do
 
@@ -337,9 +284,7 @@ select_action() {
 
     done
 
-
     [[ ${#visible[@]} -gt 0 ]] || return 1
-
 
     for action in "${indexes[@]}"; do
 
@@ -350,10 +295,7 @@ select_action() {
 
     done
 
-
     selected=$(list "${META[title]}" "${visible[@]}")
-
-
 
     echo "${indexes[$selected]}"
 }
@@ -519,8 +461,11 @@ run_action() {
 
     show_success "Running $script"
 
-
-    "$SCRIPT_DIR/$script" "${args[@]}"
+    if [[ -f "$SCRIPT_DIR/$script" ]]; then
+        "$SCRIPT_DIR/$script" "${args[@]}"
+    else
+        eval "$action_command"
+    fi
 
     exit_code=$?
 
@@ -537,6 +482,89 @@ run_action() {
     clear
 }
 
+# -------------------------
+# List scripts
+# -------------------------
+
+list_scripts() {
+
+    local entries=()
+
+    for pht in "$PHT_DIR"/*.pht; do
+
+        [[ -f "$pht" ]] || continue
+
+        script="$(basename "$pht" .pht)"
+
+        parse_pht "$pht"
+
+        # Skip hidden entries
+        [[ "${META[hidden]}" == "true" ]] && continue
+
+
+        title="${META[title]:-$script}"
+        description="${META[description]}"
+
+
+        printf "\e[33m%s\e[0m\n" "$title"
+
+        [[ -n "$description" ]] &&
+            printf "  %s\n" "$description"
+
+        echo
+
+    done
+}
+
+# -------------------------
+# Remove Proxmox Helper Toolkit
+# -------------------------
+
+remove_installation() {
+
+    [[ -f "$TRACK_FILE" ]] || {
+        show_error "No Proxmox Helper Toolkit installation found"
+        return 1
+    }
+
+    while IFS= read -r script; do
+        [[ -z "$script" ]] && continue
+        rm -f "$SCRIPT_DIR/$script"
+
+    done < "$TRACK_FILE"
+
+    rm -rf "$PHT_DIR"
+    rm -f "$TRACK_FILE"
+
+    show_success "Proxmox Helper Toolkit removed"
+}
+
+# -------------------------
+# Load Menu
+# -------------------------
+
+open_menu() {
+    while true; do
+        echo "Loading..."
+
+        load_scripts && clear
+
+        [[ ${#scripts[@]} -gt 0 ]] || {
+            show_error "No scripts found"
+            exit 1
+        }
+
+        script=$(select_script) && clear
+
+        parse_pht "$PHT_DIR/$script.pht"
+
+
+        action=$(select_action) && clear
+
+        run_action "$script" "$action"
+
+    done
+}
 
 # -------------------------
 # Main
@@ -551,35 +579,24 @@ case "${1:-}" in
         exit $?
         ;;
 
+    remove)
+        remove_installation
+        exit $?
+        ;;
 
     "")
+        open_menu
+        exit $?
         ;;
 
 
     *)
         show_error "Unknown command: $1"
+        echo
+        echo "Usage:"
+        echo "  $SCRIPT_NAME          Open menu"
+        echo "  $SCRIPT_NAME list     List installed scripts"
+        echo "  $SCRIPT_NAME remove   Remove Proxmox Helper Toolkit"
         exit 1
         ;;
-
 esac
-
-while true; do
-    echo "Loading..."
-
-    load_scripts && clear
-
-    [[ ${#scripts[@]} -gt 0 ]] || {
-        show_error "No scripts found"
-        exit 1
-    }
-
-    script=$(select_script) && clear
-
-    parse_pht "$SCRIPT_DIR/$script.pht"
-
-
-    action=$(select_action) && clear
-
-    run_action "$script" "$action"
-
-done

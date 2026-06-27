@@ -2,11 +2,11 @@
 # Install and update Proxmox Helper Toolkit
 
 TARGET_DIR="/usr/local/bin"
+PHT_DIR="$TARGET_DIR/pht-files"
 TRACK_FILE="$TARGET_DIR/.pht_scripts"
 REPO="Martan404/Proxmox-Helper-Toolkit"
 BRANCH="main"
 
-NO_CACHE="$(date +%s)"
 declare -A file_status
 declare -A scripts_to_track
 shopt -s dotglob # Allow dotfiles to be included in wildcard
@@ -21,7 +21,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 touch "$TRACK_FILE"
 
 # Get list of files in the repo root
-files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/contents?ref=$BRANCH&nc=$NO_CACHE" | grep -oP '"name":\s*"\K[^"]+')
+files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -oP '"path":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip non-script files
@@ -32,14 +32,16 @@ for file in $files; do
     esac
 
     echo "Downloading $file..."
-    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$NO_CACHE" -o "$TEMP_DIR/$file"
+
+    mkdir -p "$TEMP_DIR/$(dirname "$file")"
+    curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?nc=$(date +%s)" -o "$TEMP_DIR/$file"
     chmod +x "$TEMP_DIR/$file"
 
     case "$file" in
-        *.pht|.bash-tui-toolkit.bash)
+        */*) # Skip folders
             ;;
-        *)
-            scripts_to_track["$file"]=1 # Track downloaded scripts
+        *) # Track downloaded root scripts
+            scripts_to_track["$file"]=1 # Track downloaded root scripts
             ;;
     esac
 
@@ -60,9 +62,7 @@ done
 # Move files from temp directory to target
 echo "Moving downloaded files to $TARGET_DIR"
 
-for file in "$TEMP_DIR"/*; do
-    mv -f "$file" "$TARGET_DIR/"
-done
+cp -rf "$TEMP_DIR/"* "$TARGET_DIR/"
 
 # Read currently tracked scripts
 mapfile -t tracked_scripts < "$TRACK_FILE"
@@ -76,7 +76,7 @@ for removed_script in "${tracked_scripts[@]}"; do
             file_status["$removed_script"]="removed"
 
             rm -f "$TARGET_DIR/$removed_script"
-            rm -f "$TARGET_DIR/$removed_script.pht"
+            rm -f "$PHT_DIR/$removed_script.pht"
         fi
     fi
 done
@@ -135,3 +135,5 @@ fi
 if [[ ${#new_files[@]} -eq 0 && ${#updated_files[@]} -eq 0 && ${#removed_files[@]} -eq 0 ]]; then
     echo "All files are already up-to-date"
 fi
+
+exit 0

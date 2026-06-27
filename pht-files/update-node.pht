@@ -5,6 +5,7 @@ description = "Updates containers and packages on the current Proxmox node"
 [action]
 name = "Update Node"
 command = ""
+default=true
 
 [confirm]
 message = "Update this Proxmox node?"

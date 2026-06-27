@@ -5,6 +5,7 @@ description = "Downloads and installs the latest helper scripts"
 [action]
 name = "Update Toolkit"
 command = ""
+default=true
 
 [confirm]
 message = "Update Proxmox Helper Toolkit?"

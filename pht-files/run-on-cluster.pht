@@ -5,6 +5,7 @@ description = "Runs a command on every Proxmox node"
 [action]
 name = "Run Command"
 command = ""
+default=true
 
 [flag]
 name = "parallel"

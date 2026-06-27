@@ -1,0 +1,12 @@
+title="Uninstall Proxmox Helper Toolkit"
+description="Removes all installed toolkit files"
+
+[action]
+name="Remove"
+command="pht remove"
+default=true
+
+[confirm]
+message = "Uninstall Proxmox Helper Toolkit?"
+[/confirm]
+[/action]

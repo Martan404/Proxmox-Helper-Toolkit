@@ -5,6 +5,7 @@ description = "Updates containers and packages across the Proxmox cluster"
 [action]
 name = "Update Cluster"
 command = ""
+default=true
 
 [flag]
 name = "parallel"

@@ -6,4 +6,5 @@ hidden=true
 name = "Validate .pht files"
 command = ""
 default=true
+
 [/action]

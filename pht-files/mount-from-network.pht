@@ -5,6 +5,7 @@ description = "Mount and unmount network drives via NFS and Samba"
 [action]
 name = "Mount NFS Share"
 command = "mount-nfs"
+default=true
 
 [field]
 name = "server"
