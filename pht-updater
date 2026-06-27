@@ -21,7 +21,7 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 touch "$TRACK_FILE"
 
 # Get list of files in the repo root
-files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -oP '"path":\s*"\K[^"]+')
+files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$REPO/git/trees/$BRANCH?recursive=1" | grep -B2 '"type": "blob"' | grep -oP '"path":\s*"\K[^"]+')
 
 for file in $files; do
     # Skip non-script files
