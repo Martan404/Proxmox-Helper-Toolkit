@@ -26,7 +26,7 @@ removed_scripts=()
 for file in $files; do
     # Skip non-script files
     case "$file" in
-        LICENSE|.gitignore|README.md|.bash-tui-toolkit.bash)
+        LICENSE|.gitignore|README.md)
             continue
             ;;
     esac
@@ -35,9 +35,13 @@ for file in $files; do
     curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/$REPO/$BRANCH/$file?cb=$(date +%s)" -o "$TEMP_DIR/$file"
     chmod +x "$TEMP_DIR/$file"
 
-    if [[ "$file" != *.pht ]]; then
-        scripts_to_keep+=("$file") # Track downloaded scripts
-    fi
+    case "$file" in
+        *.pht|.bash-tui-toolkit.bash)
+            ;;
+        *)
+            scripts_to_keep+=("$file") # Track downloaded scripts
+            ;;
+    esac
 
     # Check if the file already exists and is different
     if [ -f "$TARGET_DIR/$file" ]; then
@@ -51,7 +55,7 @@ for file in $files; do
 done
 
 # Move files from temp directory to target
-echo "Installing downloaded scripts..."
+echo "Moving downloaded files to $TARGET_DIR"
 for file in "$TEMP_DIR"/*; do
     mv -f "$file" "$TARGET_DIR/"
 done
