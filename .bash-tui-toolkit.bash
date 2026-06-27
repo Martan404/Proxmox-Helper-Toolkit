@@ -27,10 +27,6 @@
 _read_stdin() {
     read $@ </dev/tty
 }
-
-_reauuuud_stdin() {
-    read $@ </dev/tty
-}
 _get_cursor_row() {
     local IFS=';'
     _read_stdin -sdR -p $'\E[6n' ROW COL
