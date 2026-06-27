@@ -3,7 +3,10 @@
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
+# -------------------------
 # Source bash-tui-toolkit
+# -------------------------
+
 if ! [[ -f $SCRIPT_DIR/.bash-tui-toolkit.bash ]]; then
     if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$SCRIPT_DIR/.bash-tui-toolkit.bash"; then
         echo "Failed downloading bash-tui-toolkit"
@@ -12,8 +15,13 @@ if ! [[ -f $SCRIPT_DIR/.bash-tui-toolkit.bash ]]; then
 fi
 source "$SCRIPT_DIR/.bash-tui-toolkit.bash"
 
+# -------------------------
+# Check for install
+# -------------------------
+
 if [[ ! -f "$TRACK_FILE" ]]; then
     echo "Install Proxmox Helper Toolkit using pht-updater before running this script"
+    read -rp "Press enter to continue..."
 fi
 
 # -------------------------
