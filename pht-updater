@@ -22,7 +22,7 @@ files=$(curl -fsSL -H "Cache-Control: no-cache" "https://api.github.com/repos/$R
 new_files=()
 updated_files=()
 removed_files=()
-scripts_to_keep=()
+declare -A scripts_to_track
 
 for file in $files; do
     # Skip non-script files
@@ -40,7 +40,7 @@ for file in $files; do
         *.pht|.bash-tui-toolkit.bash)
             ;;
         *)
-            scripts_to_keep+=("$file") # Track downloaded scripts
+            scripts_to_track["$file"]=1 # Track downloaded scripts
             ;;
     esac
 
@@ -68,7 +68,7 @@ mapfile -t tracked_scripts < "$TRACK_FILE"
 # Check for old scripts and remove them, also remove .pht if available
 for old_file in "${tracked_scripts[@]}"; do
 
-    if [[ ! " ${scripts_to_keep[*]} " == *"$old_file"* ]]; then
+    if [[ -z "${scripts_to_track[$old_file]}" ]]; then
         if [ -f "$TARGET_DIR/$old_file" ]; then
 
             removed_files+=("$old_file")
@@ -79,7 +79,7 @@ for old_file in "${tracked_scripts[@]}"; do
 done
 
 # Update tracking file
-printf "%s\n" "${scripts_to_keep[@]}" > "$TRACK_FILE"
+printf "%s\n" "${!scripts_to_track[@]}" | sort > "$TRACK_FILE"
 
 # Report removed files
 if [ "${#removed_files[@]}" -gt 0 ]; then
