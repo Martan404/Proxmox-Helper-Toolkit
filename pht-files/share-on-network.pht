@@ -5,6 +5,7 @@ description = "Create an NFS export for a directory"
 name = "Create NFS Share"
 command = "share-on-network"
 arguments = ""
+default=true
 
 [field]
 name = "Directory to share (/mnt/nas/Share)"

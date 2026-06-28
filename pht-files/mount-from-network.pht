@@ -5,7 +5,6 @@ description = "Mount and unmount network drives via NFS and Samba"
 name = "Mount NFS Share"
 command = "mount-from-network"
 arguments = "mount-nfs"
-default=true
 
 [field]
 name = "Server IP (0.0.0.0)"
@@ -28,7 +27,6 @@ type = "input"
 name = "Mount SMB Share"
 command = "mount-from-network"
 arguments = "mount-smb"
-default=true
 
 [field]
 name = "Server IP (0.0.0.0)"

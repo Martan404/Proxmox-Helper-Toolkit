@@ -213,57 +213,59 @@ parse_pht() {
 }
 
 # -------------------------
-# Load scripts
+# Load entries
 # -------------------------
 
-load_scripts() {
+load_entries() {
 
-    scripts=()
+    menu_entries=()
 
     for pht in "$PHT_DIR"/*.pht; do
 
         [[ -f "$pht" ]] || continue
 
-        script="$(basename "$pht" .pht)"
+        entry="$(basename "$pht" .pht)"
 
         parse_pht "$pht"
 
-        # Skip hidden entries
         [[ "${META[hidden]}" == "true" ]] && continue
 
-        scripts+=("$script")
+        menu_entries+=("$entry")
+
     done
 
-    mapfile -t scripts < <(printf "%s\n" "${scripts[@]}" | sort)
+    mapfile -t menu_entries < <(printf "%s\n" "${menu_entries[@]}" | sort)
 }
 
 # -------------------------
-# Select script
+# Select entry
 # -------------------------
 
-select_script() {
+select_entry() {
 
-    local entries=()
+    local display_entries=()
+    local entry_names=()
 
-    for script in "${scripts[@]}"; do
+    for entry in "${menu_entries[@]}"; do
 
-        parse_pht "$PHT_DIR/$script.pht"
+        parse_pht "$PHT_DIR/$entry.pht"
 
-        title="${META[title]:-$script}"
+        title="${META[title]:-$entry}"
         description="${META[description]}"
 
         if [[ -n "$description" ]]; then
-            entries+=("$title -- $description")
+            display_entries+=("$title -- $description")
         else
-            entries+=("$title")
+            display_entries+=("$title")
         fi
+
+        entry_names+=("$entry")
 
     done
 
-    selected=$(list "Select script" "${entries[@]}")
+    selected=$(list "Select entry" "${display_entries[@]}")
 
-    echo "${scripts[$selected]}"
-
+    echo "${entry_names[$selected]}"
 }
 
 # -------------------------
@@ -326,7 +328,7 @@ collect_flags() {
         if [[ "$answer" == "1" ]]; then
             flag_array=()
 
-            read -r -a flag_array <<< "$flag_arguments"
+            eval "flag_array=($flag_arguments)"
             FLAGS+=("${flag_array[@]}")
         fi
 
@@ -406,8 +408,7 @@ collect_fields() {
 
 run_action() {
 
-    local script="$1"
-    local action="$2"
+    local action="$1"
 
     collect_flags "$action"
     collect_fields "$action"
@@ -420,7 +421,6 @@ run_action() {
 
         clear
         [[ "$answer" == "1" ]] || return
-
     fi
 
     args=()
@@ -437,7 +437,7 @@ run_action() {
 
         argument_array=()
 
-        read -r -a argument_array <<< "$action_arguments"
+        eval "argument_array=($action_arguments)"
 
         args+=("${argument_array[@]}")
 
@@ -477,36 +477,28 @@ run_action() {
 }
 
 # -------------------------
-# List scripts
+# List entries
 # -------------------------
 
-list_scripts() {
-
-    local entries=()
+list_entries() {
 
     for pht in "$PHT_DIR"/*.pht; do
 
         [[ -f "$pht" ]] || continue
 
-        script="$(basename "$pht" .pht)"
+        entry_name="$(basename "$pht" .pht)"
 
         parse_pht "$pht"
 
         # Skip hidden entries
         [[ "${META[hidden]}" == "true" ]] && continue
 
-
-        title="${META[title]:-$script}"
+        title="${META[title]:-$entry_name}"
         description="${META[description]}"
 
-
         printf "\e[33m%s\e[0m\n" "$title"
-
-        [[ -n "$description" ]] &&
-            printf "  %s\n" "$description"
-
+        [[ -n "$description" ]] && printf "  %s\n" "$description"
         echo
-
     done
 }
 
@@ -521,14 +513,17 @@ remove_installation() {
         return 1
     }
 
-    while IFS= read -r script; do
-        [[ -z "$script" ]] && continue
-        rm -f "$SCRIPT_DIR/$script"
+    while IFS= read -r trackfile_entry; do
+        [[ -z "$trackfile_entry" ]] && continue
+        [[ "$trackfile_entry" == "$SCRIPT_NAME" ]] && continue
+
+        rm -f "$SCRIPT_DIR/$trackfile_entry"
 
     done < "$TRACK_FILE"
 
-    rm -rf "$PHT_DIR"
     rm -f "$TRACK_FILE"
+    rm -rf "$PHT_DIR"
+    rm -rf "$0"
 
     show_success "Proxmox Helper Toolkit removed"
 }
@@ -541,21 +536,21 @@ open_menu() {
     while true; do
         echo "Loading..."
 
-        load_scripts && clear
+        load_entries && clear
 
-        [[ ${#scripts[@]} -gt 0 ]] || {
-            show_error "No scripts found"
+        [[ ${#menu_entries[@]} -gt 0 ]] || {
+            show_error "No entries found"
             exit 1
         }
 
-        script=$(select_script) && clear
+        menu_entry=$(select_entry) && clear
 
-        parse_pht "$PHT_DIR/$script.pht"
+        parse_pht "$PHT_DIR/$menu_entry.pht"
 
 
         action=$(select_action) && clear
 
-        run_action "$script" "$action"
+        run_action "$action"
 
     done
 }
@@ -569,7 +564,7 @@ clear
 case "${1:-}" in
 
     list)
-        list_scripts
+        list_entries
         exit $?
         ;;
 

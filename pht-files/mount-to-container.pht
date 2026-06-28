@@ -1,5 +1,5 @@
-title = "Mount Folder To Container"
-description = "Adds a folder as an LXC mount point"
+title = "Mount Directory To Container"
+description = "Adds a directory as an LXC mount point"
 
 [action]
 name = "Add Mount Point"
