@@ -3,7 +3,8 @@ description="Removes all installed toolkit files"
 
 [action]
 name="Remove"
-command="pht remove"
+command="pht"
+arguments="remove"
 default=true
 
 [confirm]

@@ -1,27 +1,24 @@
 title = "Mount Folder To Container"
 description = "Adds a folder as an LXC mount point"
 
-
 [action]
 name = "Add Mount Point"
-command = ""
+command = "mount-to-container"
+arguments = ""
 default=true
 
 [field]
-name = "ctid"
-label = "Container ID"
+name = "Container ID (100)"
 type = "number"
 [/field]
 
 [field]
-name = "mountpoint"
-label = "Host Mount Path"
+name = "Host Mount Path (/mnt/usb/Share)"
 type = "path"
 [/field]
 
 [field]
-name = "local_mount"
-label = "Container Mount Path"
+name = "Container Mount Path (/mnt/lan/Share)"
 type = "path"
 [/field]
 

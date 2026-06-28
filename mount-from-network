@@ -11,7 +11,7 @@ MOUNT_FILE="$MOUNT_PATH/.network_mounts"
 
 USAGE="Usage:
   $SCRIPT_NAME status
-  $SCRIPT_NAME mount-nfs <server-ip> <remote-path> <local-name>
+  $SCRIPT_NAME mount-nfs <server-ip> <share-path> <local-name>
   $SCRIPT_NAME mount-smb <server-ip> <share-path> <local-name>
   $SCRIPT_NAME unmount <local-name>"
 
@@ -32,7 +32,7 @@ mount_nfs() {
     local local_name="$3"
 
     [[ -z "$nfs_ip" || -z "$nfs_path" || -z "$local_name" ]] &&
-        error_exit "Usage: $SCRIPT_NAME mount-nfs <server-ip> <remote-path> <local-name>"
+        error_exit "Usage: $SCRIPT_NAME mount-nfs <server-ip> <share-path> <local-name>"
 
     local nfs_full_path="$nfs_ip:$nfs_path"
     local target="$MOUNT_PATH/$local_name"
@@ -90,8 +90,6 @@ unmount_nas() {
     entry=$(awk -v name="$local_name" '$3==name {print}' "$MOUNT_FILE")
 
     [[ -z "$entry" ]] && error_exit "No mount named '$local_name'."
-
-    read -r protocol source_path _ <<< "$entry"
 
     mount_point="$MOUNT_PATH/$local_name"
 

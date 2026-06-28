@@ -1,21 +1,19 @@
 title = "Run On Cluster"
 description = "Runs a command on every Proxmox node"
 
-
 [action]
 name = "Run Command"
-command = ""
+command = "run-on-cluster"
+arguments = ""
 default=true
 
 [flag]
-name = "parallel"
-label = "Run in parallel"
-argument = "--parallel"
+name = "Run in parallel"
+arguments = "--parallel"
 [/flag]
 
 [field]
-name = "command"
-label = "Command to execute"
+name = "Command to execute"
 type = "input"
 [/field]
 

@@ -1,14 +1,13 @@
-title = "Share Folder Over Network"
-description = "Creates an NFS export"
-
+title = "Share Directory Over Network"
+description = "Create an NFS export for a directory"
 
 [action]
 name = "Create NFS Share"
-command = ""
+command = "share-on-network"
+arguments = ""
 
 [field]
-name = "path"
-label = "Folder to share"
+name = "Directory to share (/mnt/nas/Share)"
 type = "path"
 [/field]
 

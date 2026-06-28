@@ -3,8 +3,21 @@
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-PHT_DIR="$SCRIPT_DIR/pht-files"
+PHT_DIR="$SCRIPT_DIR/pht-files/"
 TRACK_FILE="$SCRIPT_DIR/.pht_scripts"
+
+# -------------------------
+# Source bash-tui-toolkit
+# -------------------------
+
+if ! [[ -f $PHT_DIR/_bash-tui-toolkit.bash ]]; then
+    if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$PHT_DIR/_bash-tui-toolkit.bash"; then
+        echo "Failed downloading bash-tui-toolkit"
+        exit 1
+    fi
+fi
+# shellcheck disable=SC1091
+source "$PHT_DIR/_bash-tui-toolkit.bash"
 
 # -------------------------
 # Check for install
@@ -14,18 +27,6 @@ if [[ ! -f "$TRACK_FILE" ]]; then
     show_error "Install Proxmox Helper Toolkit using pht-updater before running this script"
     read -rp "Press enter to continue..."
 fi
-
-# -------------------------
-# Source bash-tui-toolkit
-# -------------------------
-
-if ! [[ -f $SCRIPT_DIR/_bash-tui-toolkit.bash ]]; then
-    if ! curl -fsSL https://bash-tui-toolkit.timo-reymann.de/latest/bundle.bash -o "$SCRIPT_DIR/_bash-tui-toolkit.bash"; then
-        echo "Failed downloading bash-tui-toolkit"
-        exit 1
-    fi
-fi
-source "$PHT_DIR/_bash-tui-toolkit.bash"
 
 # -------------------------
 # Global storage
@@ -103,10 +104,12 @@ parse_pht() {
                 section="action"
 
                 ((action++))
-                ACTIONS+=("$action")
 
                 field=-1
+                option=-1
                 flag=-1
+
+                ACTIONS+=("$action")
                 ;;
 
 
@@ -306,29 +309,25 @@ select_action() {
 # -------------------------
 
 collect_flags() {
-
     FLAGS=()
-
 
     local action="$1"
 
-
     for ((i=0; ; i++)); do
 
-        label="${FLAG_DATA[$action:$i:label]}"
+        name="${FLAG_DATA[$action:$i:name]}"
 
-        [[ -z "$label" ]] && break
+        [[ -z "$name" ]] && break
 
+        flag_arguments="${FLAG_DATA[$action:$i:arguments]}"
 
-        argument="${FLAG_DATA[$action:$i:argument]}"
-
-
-        answer=$(confirm "$label")
-
-
+        answer=$(confirm "$name")
 
         if [[ "$answer" == "1" ]]; then
-            FLAGS+=("$argument")
+            flag_array=()
+
+            read -r -a flag_array <<< "$flag_arguments"
+            FLAGS+=("${flag_array[@]}")
         fi
 
     done
@@ -340,12 +339,9 @@ collect_flags() {
 # -------------------------
 
 collect_fields() {
-
-    VALUES=()
-
+    FIELDS=()
 
     local action="$1"
-
 
     for ((field=0; ; field++)); do
 
@@ -353,25 +349,19 @@ collect_fields() {
 
         [[ -z "$name" ]] && break
 
-
-        label="${FIELD_DATA[$action:$field:label]}"
         type="${FIELD_DATA[$action:$field:type]}"
-
 
         case "$type" in
 
-
             input|path|ipv4|number)
 
-                value=$(input "$label")
+                value=$(input "$name")
                 ;;
-
 
             password)
 
-                value=$(password "$label")
+                value=$(password "$name")
                 ;;
-
 
             list)
 
@@ -381,36 +371,30 @@ collect_fields() {
 
                 for ((option=0; ; option++)); do
 
-                    option_label="${OPTION_DATA[$action:$field:$option:label]}"
+                    option_name="${OPTION_DATA[$action:$field:$option:name]}"
 
-                    [[ -z "${OPTION_DATA[$action:$field:$option:label]+exists}" ]] && break
+                    [[ ! -v "OPTION_DATA[$action:$field:$option:name]" ]] && break
 
-
-                    options+=("$option_label")
+                    options+=("$option_name")
                     values+=("${OPTION_DATA[$action:$field:$option:value]}")
 
                 done
 
-
-                selected=$(list "$label" "${options[@]}")
-
-
+                selected=$(list "$name" "${options[@]}")
 
                 value="${values[$selected]}"
 
                 ;;
 
-
             *)
 
-                value=$(input "$label")
+                value=$(input "$name")
 
                 ;;
 
         esac
 
-
-        VALUES+=("$value")
+        FIELDS+=("$value")
 
     done
 }
@@ -425,14 +409,10 @@ run_action() {
     local script="$1"
     local action="$2"
 
-
     collect_flags "$action"
-
     collect_fields "$action"
 
-
     confirm_message="${ACTION_DATA[$action:confirm:message]}"
-
 
     if [[ -n "$confirm_message" ]]; then
 
@@ -443,42 +423,56 @@ run_action() {
 
     fi
 
+    args=()
 
-    args=(
+    # Add flags first
+    args+=(
         "${FLAGS[@]}"
     )
 
+    # Add action arguments
+    action_arguments="${ACTION_DATA[$action:arguments]}"
 
-    action_command="${ACTION_DATA[$action:command]}"
+    if [[ -n "$action_arguments" ]]; then
 
-    [[ -n "$action_command" ]] && args+=("$action_command")
+        argument_array=()
 
+        read -r -a argument_array <<< "$action_arguments"
 
+        args+=("${argument_array[@]}")
+
+    fi
+
+    # Add user supplied fields last
     args+=(
-        "${VALUES[@]}"
+        "${FIELDS[@]}"
     )
 
+    command="${ACTION_DATA[$action:command]}"
 
-    show_success "Running $script"
-
-    if [[ -f "$SCRIPT_DIR/$script" ]]; then
-        "$SCRIPT_DIR/$script" "${args[@]}"
-    else
-        eval "$action_command"
+    if ! command -v "$command" >/dev/null 2>&1; then
+        show_error "Command not found: $command"
+        read -rp "Press enter to continue..."
+        return
     fi
+
+    printf 'Running: %q' "$command"
+    printf ' %q' "${args[@]}"
+    echo
+
+   "$command" "${args[@]}"
 
     exit_code=$?
 
-
     if [[ $exit_code -ne 0 ]]; then
-        show_error "$script failed with exit code $exit_code"
+        show_error "$command failed with exit code $exit_code"
+
     else
-        show_success "$script completed successfully"
+        show_success "$command completed successfully"
+
     fi
 
-
     read -rp "Press enter to continue..."
-
     clear
 }
 

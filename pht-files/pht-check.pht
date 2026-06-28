@@ -4,7 +4,8 @@ hidden=true
 
 [action]
 name = "Validate .pht files"
-command = ""
+command = "pht-check"
+arguments = ""
 default=true
 
 [/action]

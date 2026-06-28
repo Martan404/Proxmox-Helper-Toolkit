@@ -1,22 +1,21 @@
 title = "Auto NAS"
 description = "Automatically mount USB drives and share them via NFS and Samba"
 
-
 [action]
 name = "Show Mounted Drives"
-command = "status"
+command = "auto-nas"
+arguments = "status"
 
 [/action]
 
-
 [action]
 name = "Mount USB Drive"
-command = "mount"
+command = "auto-nas"
+arguments = "mount"
 hidden = true
 
 [field]
-name = "device"
-label = "Device"
+name = "Device"
 type = "input"
 [/field]
 
@@ -25,12 +24,12 @@ type = "input"
 
 [action]
 name = "Unmount USB Drive"
-command = "unmount"
+command = "auto-nas"
+arguments = "unmount"
 hidden = true
 
 [field]
-name = "device"
-label = "Device"
+name = "Device"
 type = "input"
 [/field]
 
@@ -39,26 +38,26 @@ type = "input"
 
 [action]
 name = "Show Logs"
-command = "logs"
+command = "auto-nas"
+arguments = "logs"
 
 [field]
-name = "type"
-label = "Log Type"
+name = "Log Type"
 type = "list"
 
 [option]
+name = "Live"
 value = "live"
-label = "Live"
 [/option]
 
 [option]
+name = "Recent"
 value = "recent"
-label = "Recent"
 [/option]
 
 [option]
+name = "All"
 value = ""
-label = "All"
 [/option]
 
 [/field]
@@ -68,7 +67,8 @@ label = "All"
 
 [action]
 name = "Install Auto NAS"
-command = "install"
+command = "auto-nas"
+arguments = "install"
 
 [confirm]
 message = "Install Auto NAS?"
@@ -76,10 +76,10 @@ message = "Install Auto NAS?"
 
 [/action]
 
-
 [action]
 name = "Remove Auto NAS"
-command = "remove"
+command = "auto-nas"
+arguments = "remove"
 
 [confirm]
 message = "Remove Auto NAS?"
@@ -90,7 +90,8 @@ message = "Remove Auto NAS?"
 
 [action]
 name = "Setup Dependencies"
-command = "setup"
+command = "auto-nas"
+arguments = "setup"
 
 [confirm]
 message = "Install Auto NAS dependencies?"
