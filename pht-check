@@ -403,7 +403,7 @@ check_pht() {
 
 
                         if [[ -z "${OPTION_NAME[$o]}" ]]; then
-                            error "List field '${FIELD_NAME[$i]}' option $found_options missing label"
+                            error "List field '${FIELD_NAME[$i]}' option $found_options missing name"
                         fi
 
 
