@@ -74,7 +74,7 @@ check_pht() {
     declare -A FIELD_NAME
     declare -A FIELD_TYPE
 
-    declare -A OPTION_LABEL
+    declare -A OPTION_NAME
     declare -A OPTION_VALUE
     declare -A OPTION_FIELD
 
@@ -252,8 +252,8 @@ check_pht() {
 
                         case "$key" in
 
-                            label)
-                                OPTION_LABEL[$option]="$value"
+                            name)
+                                OPTION_NAME[$option]="$value"
                                 ;;
 
                             value)
@@ -402,7 +402,7 @@ check_pht() {
                         found_options=$((found_options + 1))
 
 
-                        if [[ -z "${OPTION_LABEL[$o]}" ]]; then
+                        if [[ -z "${OPTION_NAME[$o]}" ]]; then
                             error "List field '${FIELD_NAME[$i]}' option $found_options missing label"
                         fi
 
@@ -469,7 +469,7 @@ check_pht() {
 
 shopt -s nullglob
 
-files=("$SCRIPT_DIR"/*.pht)
+files=("$SCRIPT_DIR"/pht-files/*.pht)
 
 
 if [[ ${#files[@]} -eq 0 ]]; then
