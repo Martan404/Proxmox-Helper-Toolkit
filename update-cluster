@@ -16,7 +16,7 @@ if [ $# -gt 0 ]; then
     exit 1
 fi
 
-run_on_cluster() {
+run_command() {
     if [ "$PARALLEL" = true ]; then
         run-on-cluster -p "$1"
     else
@@ -27,13 +27,13 @@ run_on_cluster() {
 echo "Updating all running containers across the cluster..."
 echo
 
-run_on_cluster 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
+run_command 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
 echo
 
 echo "Updating system packages across the cluster..."
 echo
 
-run_on_cluster 'apt --assume-yes update && apt --assume-yes upgrade'
+run_command 'apt --assume-yes update && apt --assume-yes upgrade'
 echo
 
 echo "Cluster update complete."
