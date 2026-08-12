@@ -5,7 +5,7 @@
 
 SCRIPT_NAME="$(basename "$0")"
 PARALLEL=false
-COMMAND="$*"
+
 LOCAL_NODE=$(hostname)
 SSH_CONTROL_DIR="/tmp/proxmox-ssh-$$"
 mkdir -p "$SSH_CONTROL_DIR"
@@ -16,6 +16,8 @@ if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
     PARALLEL=true
     shift
 fi
+
+COMMAND="$*"
 
 if [ $# -eq 0 ]; then
     echo "Usage: $SCRIPT_NAME [--parallel|-p] <command>"
@@ -48,8 +50,6 @@ run_command() {
     local NODE="$1"
     local NODE_IP="${NODE_IPS[$NODE]}"
 
-    [[ -z "$NODE_IP" ]] && return
-
     echo "[ $NODE ]"
     
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
@@ -59,42 +59,41 @@ run_command() {
     fi
 }
 
-# Resolve node IPs
+# Resolve node IPs and establish SSH connections
 declare -A NODE_IPS
 
 while IFS=$'\t' read -r NODE IP; do
     NODE_IPS["$NODE"]="$IP"
-
-    if [[ -z "$IP" ]]; then
-        echo "[ WARNING ] Could not determine IP for $NODE, skipping."
-    fi
 done < <(
     for NODE in "${NODES[@]}"; do
         (
-            IP=$(pvesh get "/nodes/$NODE/network" --output-format json |
-                 jq -r '.[] | select(.iface=="vmbr0") | .address | split("/")[0]')
+            # Local node
+            if [[ "$NODE" == "$LOCAL_NODE" ]]; then
+                printf '%s\t\n' "$NODE"
+                exit
+            fi
+
+            # Get IP for this node
+            IP=$(pvesh get "/nodes/$NODE/network" --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address | split("/")[0]')
+
+            if [[ -z "$IP" || "$IP" == "null" ]]; then
+                echo "[ WARNING ] Could not determine IP for $NODE" >&2
+                printf '%s\t\n' "$NODE"
+                exit
+            fi
+
+            # Establish SSH
+            if ! ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlMaster=yes -o ControlPersist=yes -o ControlPath="$SSH_CONTROL_DIR/%C" -fN "root@$IP" 2>/dev/null
+                echo "[ WARNING ] SSH to $NODE ($IP) failed" >&2
+            fi
+
+            # Return IP to parent shell
             printf '%s\t%s\n' "$NODE" "$IP"
         ) &
     done
+
     wait
 )
-
-# Establish SSH connections
-for NODE in "${NODES[@]}"; do
-    NODE_IP="${NODE_IPS[$NODE]}"
-
-    [[ -z "$NODE_IP" || "$NODE" == "$LOCAL_NODE" ]] && continue
-
-    (
-        ssh -o BatchMode=yes -o ConnectTimeout="5" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlMaster=yes -o ControlPersist=yes -o ControlPath="$SSH_CONTROL_DIR/%C" -fN root@"$NODE_IP" 2>/dev/null
-
-        if [[ $? -ne 0 ]]; then
-            echo "[ WARNING ] SSH to $NODE ($NODE_IP) failed"
-        fi
-    ) &
-done
-
-wait
 
 # Execute command
 for NODE in "${NODES[@]}"; do
