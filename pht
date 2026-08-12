@@ -263,6 +263,10 @@ select_entry() {
 
     done
 
+    # Create and add EXIT entry last
+    display_entries+=("Exit")
+    entry_names+=("__EXIT__")
+
     selected=$(list "Select entry" "${display_entries[@]}")
 
     echo "${entry_names[$selected]}"
@@ -544,6 +548,9 @@ open_menu() {
         }
 
         menu_entry=$(select_entry) && clear
+
+        # If EXIT entry seleted then exit
+        [[ "$menu_entry" == "__EXIT__" ]] && break
 
         parse_pht "$PHT_DIR/$menu_entry.pht"
 
