@@ -5,6 +5,7 @@
 
 SCRIPT_NAME="$(basename "$0")"
 PARALLEL=false
+SSH_TIMEOUT=5
 
 # Parse optional flag
 if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
@@ -45,27 +46,22 @@ run_command() {
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=$SSH_TIMEOUT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
         fi
     fi
-    echo "$NODE did the thing"
 }
 
 # Run commands
 for NODE in "${NODES[@]}"; do
     if $PARALLEL; then
-        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep 5
+        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $((SSH_TIMEOUT + 0.2))
         
         run_command "$NODE" &
+        wait
     else
         run_command "$NODE"
     fi
 done
-
-# Wait for all background jobs if parallel
-if $PARALLEL; then
-    wait
-fi
