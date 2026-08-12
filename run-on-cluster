@@ -38,14 +38,14 @@ run_command() {
     NODE_IP=$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
 
     if [[ -z "$NODE_IP" ]]; then
-        echo -e "[ WARNING ] Could not determine IP for $NODE, skipping..."
+        echo -e "[ WARNING ] Could not determine IP for $NODE, skipping."
         return
     fi
 
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
-        ssh -fo BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
@@ -54,18 +54,15 @@ run_command() {
 }
 
 # Run commands
-if $PARALLEL; then
-    for NODE in "${NODES[@]}"; do
-        if [[ "$NODE" != "$LOCAL_NODE" ]]; then
-            run_command "$NODE" &
-        fi
-    done
-
-    wait
-
-    run_command "$LOCAL_NODE"
-else
-    for NODE in "${NODES[@]}"; do
+for NODE in "${NODES[@]}"; do
+    if $PARALLEL; then
+        run_command "$NODE" &
+    else
         run_command "$NODE"
-    done
+    fi
+done
+
+# Wait for all background jobs if parallel
+if $PARALLEL; then
+    wait
 fi
