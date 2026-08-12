@@ -51,6 +51,7 @@ run_command() {
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
         fi
     fi
+    echo "$NODE did the thing"
 }
 
 # Run commands
