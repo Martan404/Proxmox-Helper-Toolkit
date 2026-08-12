@@ -45,7 +45,7 @@ read -rp "Do you want to reboot all nodes in the cluster? (y/N): " answer
 case "$answer" in
     [yY]|[yY][eE][sS])
         echo "Rebooting all nodes..."
-        run_on_cluster 'reboot'
+        run-on-cluster "reboot"
         ;;
     *)
         echo "Skipping reboot."
