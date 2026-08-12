@@ -40,13 +40,12 @@ trap cleanup EXIT
 run_command() {
     local NODE="$1"
     local NODE_IP="${NODE_IPS[$NODE]}"
-
-    echo "[ $NODE ]"
     
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
+        echo "[ $NODE ]"
         bash -c "$COMMAND"
     else
-        ssh -o ControlMaster=no -o ControlPath="$SSH_CONTROL_DIR/%C" root@"$NODE_IP" "export TERM=xterm; $COMMAND"
+        ssh -o ControlMaster=no -o ControlPath="$SSH_CONTROL_DIR/%C" root@"$NODE_IP" "echo '[ $NODE ]'; export TERM=xterm; $COMMAND"
     fi
 }
 
