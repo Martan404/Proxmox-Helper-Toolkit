@@ -30,11 +30,11 @@ touch "$TRACK_FILE"
 
 echo "Downloading repository..."
 
-curl -fsSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TEMP_DIR/repo.tar.gz"
+curl -fsSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TEMP_DIR/repo.tar.gz" || exit
 
 mkdir "$TEMP_DIR/repo"
 
-tar -xzf "$TEMP_DIR/repo.tar.gz" --strip-components=1 -C "$TEMP_DIR/repo"
+tar -xzf "$TEMP_DIR/repo.tar.gz" --strip-components=1 -C "$TEMP_DIR/repo" || exit
 
 #
 # Remove unwanted repo files
