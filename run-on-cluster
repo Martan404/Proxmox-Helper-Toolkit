@@ -91,7 +91,7 @@ for NODE in "${NODES[@]}"; do
             -o ControlPersist=yes \
             -o ControlPath="$SSH_CONTROL_DIR/%C" \
             -fN \
-            root@"$NODE_IP"
+            root@"$NODE_IP" 2>/dev/null
 
         if [[ $? -ne 0 ]]; then
             echo "[ WARNING ] SSH to $NODE ($NODE_IP) failed"
