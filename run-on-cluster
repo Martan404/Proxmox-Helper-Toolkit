@@ -36,14 +36,20 @@ declare -A NODE_IPS
 echo "[ INFO ] Resolving node IPs..."
 
 for NODE in "${NODES[@]}"; do
-    NODE_IPS["$NODE"]="$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)" 
+    (
+        IP=$(pvesh get "/nodes/$NODE/network" --output-format json |
+             jq -r '.[] | select(.iface=="vmbr0") | .address' |
+             cut -d/ -f1)
 
-    if [[ -z "${NODE_IPS[$NODE]}" ]]; then
-        echo "[ WARNING ] Could not determine IP for $NODE, skipping."
-    else
-        echo "[ $NODE ] ${NODE_IPS[$NODE]}"
-    fi
+        if [[ -n "$IP" ]]; then
+            printf '%s\t%s\n' "$NODE" "$IP"
+        else
+            printf '%s\t%s\n' "$NODE" ""
+        fi
+    ) &
 done
+
+wait
 
 run_command() {
     local NODE="$1"
