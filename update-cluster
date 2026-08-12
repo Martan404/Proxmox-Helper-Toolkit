@@ -24,18 +24,18 @@ run_command() {
     fi
 }
 
-echo "After the update;"
-read -rp "Do you want to remove old packages? (y/N): " answer_remove
-read -rp "Do you want to reboot all nodes in the cluster? (y/N): " answer_reboot
+read -rp "Remove old packages after updating? (y/N): " answer_remove
+read -rp "Reboot after updating? (y/N): " answer_reboot
 
-echo "Updating all running containers across the cluster..."
+echo "Updating all running containers..."
 run_command 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
 
-echo "Updating system packages across the cluster..."
+echo "Updating system packages..."
 run_command 'apt --assume-yes update && apt --assume-yes upgrade'
 
 case "$answer_remove" in
     [yY]|[yY][eE][sS])
+        echo "Removing old system packages..."
         run_command "apt --assume-yes autoremove"
         ;;
 esac

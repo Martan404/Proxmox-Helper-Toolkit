@@ -3,30 +3,30 @@
 
 # shellcheck disable=SC2016
 
-echo "Updating all running containers on the node..."
-echo
+echo "After the update;"
+read -rp "Remove old packages after updating? (y/N): " answer_remove
+read -rp "Reboot the node after updating? (y/N): " answer_reboot
 
+echo "Updating all running containers..."
 bash -c 'var_backup=no var_container=all_running var_unattended=yes var_skip_confirm=yes var_auto_reboot=yes bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/tools/pve/update-apps.sh)"'
-echo
 
-echo "Updating system packages on the node..."
-echo
-
+echo "Updating system packages..."
 bash -c 'apt --assume-yes update && apt --assume-yes upgrade'
-echo
 
-echo "Node update complete."
-echo
-
-# Ask for reboot
-read -rp "Do you want to reboot the node? (y/N): " answer
-
-case "$answer" in
+case "$answer_remove" in
     [yY]|[yY][eE][sS])
-        echo "Rebooting node..."
+        echo "Removing old system packages..."
+        run_command "apt --assume-yes autoremove"
+        ;;
+esac
+
+echo "Node update complete"
+
+case "$answer_reboot" in
+    [yY]|[yY][eE][sS])
         bash -c 'reboot'
         ;;
     *)
-        echo "Skipping reboot."
+        exit 0
         ;;
 esac
