@@ -36,18 +36,24 @@ echo
 run_command 'apt --assume-yes update && apt --assume-yes upgrade'
 echo
 
-echo "Cluster update complete."
+echo "Cluster update complete"
 echo
 
-# Ask for reboot
+read -rp "Do you want to remove old packages? (y/N): " answer
+
+case "$answer" in
+    [yY]|[yY][eE][sS])
+        run_command "apt --assume-yes autoremove"
+        ;;
+esac
+
 read -rp "Do you want to reboot all nodes in the cluster? (y/N): " answer
 
 case "$answer" in
     [yY]|[yY][eE][sS])
-        echo "Rebooting all nodes..."
         run-on-cluster "reboot"
         ;;
     *)
-        echo "Skipping reboot."
+        exit 0
         ;;
 esac
