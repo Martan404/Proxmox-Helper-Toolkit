@@ -5,9 +5,9 @@
 
 SCRIPT_NAME="$(basename "$0")"
 PARALLEL=false
-
 LOCAL_NODE=$(hostname)
 SSH_CONTROL_DIR="/tmp/proxmox-ssh-$$"
+declare -A NODE_IPS
 mkdir -p "$SSH_CONTROL_DIR"
 chmod 700 "$SSH_CONTROL_DIR"
 
@@ -19,19 +19,10 @@ fi
 
 COMMAND="$*"
 
-if [ $# -eq 0 ]; then
+if [ $COMMAND -eq 0 ]; then
     echo "Usage: $SCRIPT_NAME [--parallel|-p] <command>"
     exit 1
 fi
-
-# Get node names in the cluster
-NODES=($(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}'))
-
-# Reorder nodes so the local node runs last
-NODES=(
-  $(printf "%s\n" "${NODES[@]}" | grep -v "^$LOCAL_NODE$")
-  "$LOCAL_NODE"
-)
 
 cleanup() {
     for NODE in "${NODES[@]}"; do
@@ -59,9 +50,16 @@ run_command() {
     fi
 }
 
-# Resolve node IPs and establish SSH connections
-declare -A NODE_IPS
+# Get node names in the cluster
+NODES=($(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}'))
 
+# Reorder nodes so the local node runs last
+NODES=(
+  $(printf "%s\n" "${NODES[@]}" | grep -v "^$LOCAL_NODE$")
+  "$LOCAL_NODE"
+)
+
+# Resolve node IPs and establish SSH connections
 while IFS=$'\t' read -r NODE IP; do
     NODE_IPS["$NODE"]="$IP"
 done < <(
