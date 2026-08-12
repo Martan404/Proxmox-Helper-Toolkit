@@ -30,14 +30,16 @@ NODES=(
   "$LOCAL_NODE"
 )
 
-# Resolve node IPs
+# Resolve node IPs before executing commands
 declare -A NODE_IPS
 
+echo "[ INFO ] Resolving node IPs..."
+
 for NODE in "${NODES[@]}"; do
-    NODE_IPS["$NODE"]="$(getent hosts "$NODE" | awk 'NR==1 {print $1}')"
+    NODE_IPS["$NODE"]="$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)" 
 
     if [[ -z "${NODE_IPS[$NODE]}" ]]; then
-        echo "[ WARNING ] Could not resolve $NODE, skipping."
+        echo "[ WARNING ] Could not determine IP for $NODE, skipping."
     else
         echo "[ $NODE ] ${NODE_IPS[$NODE]}"
     fi
@@ -46,6 +48,8 @@ done
 run_command() {
     local NODE="$1"
     local NODE_IP="${NODE_IPS[$NODE]}"
+
+    [[ -z "$NODE_IP" ]] && return
 
     echo "[ $NODE ]"
     
