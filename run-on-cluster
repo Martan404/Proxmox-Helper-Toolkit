@@ -50,24 +50,16 @@ run_command() {
     
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         if $PARALLEL; then
-            # Wait until all remote nodes have accepted the command
-            while [[ "$(cat "$READY_REMOTE_NODES")" -lt "$REMOTE_COUNT" ]]; do
-                sleep 0.1
-            done
+            sleep 1
         fi
         bash -c "$COMMAND"
     else
-        ssh -n -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "systemd-run --no-block bash -c '$COMMAND'" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "systemd-run --no-block bash -c '$COMMAND'" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
         fi
-
-        if $PARALLEL; then
-            flock "$READY_REMOTE_NODES" bash -c 'echo $(( $(<"$1") + 1 )) > "$1"' _ "$READY_REMOTE_NODES"
-        fi
     fi
-    echo "Running $COMMAND"
 }
 
 # Run commands
