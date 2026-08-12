@@ -45,7 +45,7 @@ run_command() {
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" & echo 'Done' 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND & echo 'Done'" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
