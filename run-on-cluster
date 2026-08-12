@@ -40,8 +40,6 @@ while IFS=$'\t' read -r NODE IP; do
 
     if [[ -z "$IP" ]]; then
         echo "[ WARNING ] Could not determine IP for $NODE, skipping."
-    else
-        echo "[ $NODE ] $IP"
     fi
 done < <(
     for NODE in "${NODES[@]}"; do
