@@ -5,7 +5,11 @@
 
 SCRIPT_NAME="$(basename "$0")"
 PARALLEL=false
-SSH_TIMEOUT=5
+COMMAND="$*"
+LOCAL_NODE=$(hostname)
+SSH_CONTROL_DIR="/tmp/proxmox-ssh-$$"
+mkdir -p "$SSH_CONTROL_DIR"
+chmod 700 "$SSH_CONTROL_DIR"
 
 # Parse optional flag
 if [[ "$1" == "--parallel" || "$1" == "-p" ]]; then
@@ -18,32 +22,7 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-COMMAND="$*"
-LOCAL_NODE=$(hostname)
-
-SSH_CONTROL_DIR="/tmp/proxmox-ssh-$$"
-mkdir -p "$SSH_CONTROL_DIR"
-chmod 700 "$SSH_CONTROL_DIR"
-
-cleanup_ssh() {
-    for NODE in "${NODES[@]}"; do
-        NODE_IP="${NODE_IPS[$NODE]}"
-
-        [[ -z "$NODE_IP" || "$NODE" == "$LOCAL_NODE" ]] && continue
-
-        ssh \
-            -o ControlPath="$SSH_CONTROL_DIR/%C" \
-            -O exit \
-            root@"$NODE_IP" \
-            2>/dev/null || true
-    done
-
-    rm -rf "$SSH_CONTROL_DIR"
-}
-
-trap cleanup_ssh EXIT
-
-# Grab node names from the cluster
+# Get node names in the cluster
 NODES=($(pvecm nodes | awk '/Nodeid/{flag=1; next} flag && NF>=3 {print $3}'))
 
 # Reorder nodes so the local node runs last
@@ -52,10 +31,36 @@ NODES=(
   "$LOCAL_NODE"
 )
 
-# Resolve node IPs before executing commands
-declare -A NODE_IPS
+cleanup() {
+    for NODE in "${NODES[@]}"; do
+        NODE_IP="${NODE_IPS[$NODE]}"
 
-echo "[ INFO ] Resolving node IPs..."
+        [[ -z "$NODE_IP" || "$NODE" == "$LOCAL_NODE" ]] && continue
+
+        ssh -o ControlPath="$SSH_CONTROL_DIR/%C" -O exit root@"$NODE_IP" 2>/dev/null || true
+    done
+
+    rm -rf "$SSH_CONTROL_DIR"
+}
+trap cleanup EXIT
+
+run_command() {
+    local NODE="$1"
+    local NODE_IP="${NODE_IPS[$NODE]}"
+
+    [[ -z "$NODE_IP" ]] && return
+
+    echo "[ $NODE ]"
+    
+    if [[ "$NODE" == "$LOCAL_NODE" ]]; then
+        bash -c "$COMMAND"
+    else
+        ssh -o ControlMaster=no -o ControlPath="$SSH_CONTROL_DIR/%C" root@"$NODE_IP" "export TERM=xterm; $COMMAND"
+    fi
+}
+
+# Resolve node IPs
+declare -A NODE_IPS
 
 while IFS=$'\t' read -r NODE IP; do
     NODE_IPS["$NODE"]="$IP"
@@ -74,24 +79,14 @@ done < <(
     wait
 )
 
-echo "[ INFO ] Establishing SSH connections..."
-
+# Establish SSH connections
 for NODE in "${NODES[@]}"; do
     NODE_IP="${NODE_IPS[$NODE]}"
 
     [[ -z "$NODE_IP" || "$NODE" == "$LOCAL_NODE" ]] && continue
 
     (
-        ssh \
-            -o BatchMode=yes \
-            -o ConnectTimeout="$SSH_TIMEOUT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o ControlMaster=yes \
-            -o ControlPersist=yes \
-            -o ControlPath="$SSH_CONTROL_DIR/%C" \
-            -fN \
-            root@"$NODE_IP" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout="5" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlMaster=yes -o ControlPersist=yes -o ControlPath="$SSH_CONTROL_DIR/%C" -fN root@"$NODE_IP" 2>/dev/null
 
         if [[ $? -ne 0 ]]; then
             echo "[ WARNING ] SSH to $NODE ($NODE_IP) failed"
@@ -101,29 +96,11 @@ done
 
 wait
 
-run_command() {
-    local NODE="$1"
-    local NODE_IP="${NODE_IPS[$NODE]}"
-
-    [[ -z "$NODE_IP" ]] && return
-
-    echo "[ $NODE ]"
-    
-    if [[ "$NODE" == "$LOCAL_NODE" ]]; then
-        bash -c "$COMMAND"
-    else
-        ssh \
-            -o ControlMaster=no \
-            -o ControlPath="$SSH_CONTROL_DIR/%C" \
-            root@"$NODE_IP" \
-            "export TERM=xterm; $COMMAND"
-    fi
-}
-
+# Execute command
 for NODE in "${NODES[@]}"; do
     if $PARALLEL; then
 
-        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $SSH_TIMEOUT
+        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep 0.2
         run_command "$NODE" &
     else
         run_command "$NODE"
