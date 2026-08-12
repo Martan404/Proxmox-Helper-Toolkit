@@ -57,11 +57,15 @@ run_command() {
 # Run commands
 for NODE in "${NODES[@]}"; do
     if $PARALLEL; then
-        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $((SSH_TIMEOUT + 1))
-        
+
+        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $SSH_TIMEOUT
         run_command "$NODE" &
-        wait
     else
         run_command "$NODE"
     fi
 done
+
+# Wait for all background jobs if parallel
+if $PARALLEL; then
+    wait
+fi
