@@ -33,8 +33,6 @@ NODES=(
 run_command() {
     local NODE="$1"
 
-    echo "[ $NODE ]"
-
     # Get the node's IP from vmbr0
     NODE_IP=$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
 
@@ -43,6 +41,8 @@ run_command() {
         return
     fi
 
+    echo "[ $NODE ]"
+    
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
