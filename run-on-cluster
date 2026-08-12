@@ -38,11 +38,12 @@ run_command() {
     NODE_IP=$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
 
     if [[ -z "$NODE_IP" ]]; then
-        echo -e "[ WARNING ] Could not determine IP for $NODE, skipping."
+        echo -e "[ WARNING ] Could not determine IP for $NODE, skipping..."
         return
     fi
 
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
+        sleep 0.2
         bash -c "$COMMAND"
     else
         ssh -n -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
