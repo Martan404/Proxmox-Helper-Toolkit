@@ -30,37 +30,15 @@ NODES=(
   "$LOCAL_NODE"
 )
 
-# Resolve node IPs before executing commands
-declare -A NODE_IPS
-
-echo "[ INFO ] Resolving node IPs..."
-
-for NODE in "${NODES[@]}"; do
-    NODE_IPS["$NODE"]="$(pvesh get /nodes/"$NODE"/network --output-format json |
-        jq -r '.[] | select(.iface=="vmbr0") | .address' |
-        cut -d/ -f1)"
-
-    if [[ -z "${NODE_IPS[$NODE]}" ]]; then
-        echo "[ WARNING ] Could not determine IP for $NODE, skipping."
-    else
-        echo "[ $NODE ] ${NODE_IPS[$NODE]}"
-    fi
-done
-
 run_command() {
     local NODE="$1"
-    local NODE_IP="${NODE_IPS[$NODE]}"
 
-     if [[ -z "$NODE_IP" ]]; then
-        return
-    fi
-    
     echo "[ $NODE ]"
     
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         bash -c "$COMMAND"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=$SSH_TIMEOUT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=$SSH_TIMEOUT -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE" "export TERM=xterm; $COMMAND" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
