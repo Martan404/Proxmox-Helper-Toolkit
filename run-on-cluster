@@ -29,17 +29,11 @@ NODES=(
   "$LOCAL_NODE"
 )
 
-REMOTE_COUNT=$((${#NODES[@]} - 1))
-READY_REMOTE_NODES=$(mktemp)
-
-echo 0 > "$READY_REMOTE_NODES"
-trap 'rm -f "$READY_REMOTE_NODES"' EXIT
-
 run_command() {
     local NODE="$1"
 
     echo "[ $NODE ]"
-    
+
     # Get the node's IP from vmbr0
     NODE_IP=$(pvesh get /nodes/"$NODE"/network --output-format json | jq -r '.[] | select(.iface=="vmbr0") | .address' | cut -d/ -f1)
 
@@ -47,14 +41,14 @@ run_command() {
         echo -e "[ WARNING ] Could not determine IP for $NODE, skipping..."
         return
     fi
-    
+
     if [[ "$NODE" == "$LOCAL_NODE" ]]; then
         if $PARALLEL; then
             sleep 1
         fi
         bash -c "$COMMAND"
     else
-        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "systemd-run --no-block bash -c '$COMMAND'" 2>/dev/null
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@"$NODE_IP" "export TERM=xterm; $COMMAND" 2>/dev/null
         SSH_EXIT=$?
         if [[ $SSH_EXIT -ne 0 ]]; then
             echo -e "[ WARNING ] SSH to $NODE ($NODE_IP) failed with exit code $SSH_EXIT"
