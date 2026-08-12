@@ -57,7 +57,7 @@ run_command() {
 # Run commands
 for NODE in "${NODES[@]}"; do
     if $PARALLEL; then
-        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $((SSH_TIMEOUT + 0.2))
+        [[ "$NODE" == "$LOCAL_NODE" ]] && sleep $((SSH_TIMEOUT + 1))
         
         run_command "$NODE" &
         wait
